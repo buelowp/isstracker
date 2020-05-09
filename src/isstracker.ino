@@ -152,11 +152,11 @@ void moveLongitude(int steps)
 
 void updateLaserLocation()
 {
-    int steps = 0;
+    int latSteps = 0;
 
     if (g_needPosition) {
         g_lastLat = g_latitude;
-        steps = g_latitude / g_latResolution;
+        latSteps = static_cast<int>(g_latitude / g_latResolution + .5);
         g_needPosition = false;
     }
     else {
@@ -165,11 +165,11 @@ void updateLaserLocation()
         Serial.println(delta);
         if (delta >= 0 && delta >= g_latResolution) {
             g_lastLat += g_latResolution;
-            steps = 1;
+            latSteps = 1;
         }
         if (delta <= 0 && (delta * -1) >= g_latResolution) {
             g_lastLat -= g_latResolution;
-            steps = -1;
+            latSteps = -1;
         }
     }
     
