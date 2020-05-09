@@ -7,7 +7,7 @@
 #include "ArduinoJson.h"
 #include "MQTT.h"
 
-#define APP_ID                  18
+#define APP_ID                  21
 
 #define LASER_ENABLE        DAC
 
@@ -108,10 +108,6 @@ void getISSLocation(const char *event, const char *data)
     if (!err) {
         g_latitude = doc["iss_position"]["latitude"].as<double>();
         g_longitude = doc["iss_position"]["longitude"].as<double>();
-//        Serial.print("Latitude is now ");
-//        Serial.println(g_latitude);
-//        Serial.print(" and Longitude is now ");
-//        Serial.println(g_longitude);
         updateLaserLocation();
     }
     else {
@@ -163,14 +159,20 @@ void updateLaserLocation()
         steps = g_latitude / g_latResolution;
         g_needPosition = false;
     }
-    if ((g_latitude - g_lastLat) >= .9) {
-        g_lastLat += g_latResolution;
-        steps = 1;
+    else {
+        double delta = g_latitude - g_lastLat;
+        Serial.print("distance traveled: ");
+        Serial.println(delta);
+        if (delta >= 0 && delta >= g_latResolution) {
+            g_lastLat += g_latResolution;
+            steps = 1;
+        }
+        if (delta <= 0 && (delta * -1) >= g_latResolution) {
+            g_lastLat -= g_latResolution;
+            steps = -1;
+        }
     }
-    else if ((g_latitude - g_lastLat) <= -.9) {
-        g_lastLat -= g_latResolution;
-        steps = -1;
-    }
+    
     moveLatitude(steps);
 //    moveLongitude(lonSteps);
 }
@@ -218,6 +220,9 @@ void setLatitudePrecision()
             break;
     }
 
+    Serial.print("Latitude angular resolution is now 1 step to ");
+    Serial.print(g_latResolution);
+    Serial.print(" degrees");
     digitalWrite(LASER_MOTOR_MS1, ms1);
     digitalWrite(LASER_MOTOR_MS2, ms2);
 }
