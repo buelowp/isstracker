@@ -9291,9 +9291,9 @@ general purpose rectifier, 1 A</description>
 <label x="238.76" y="116.84" size="1.016" layer="95" rot="R180" xref="yes"/>
 </segment>
 <segment>
-<wire x1="251.46" y1="147.32" x2="238.76" y2="147.32" width="0.1524" layer="91"/>
-<label x="238.76" y="147.32" size="1.016" layer="95" rot="R180" xref="yes"/>
-<pinref part="J9" gate="J$1" pin="2"/>
+<wire x1="251.46" y1="149.86" x2="238.76" y2="149.86" width="0.1524" layer="91"/>
+<label x="238.76" y="149.86" size="1.016" layer="95" rot="R180" xref="yes"/>
+<pinref part="J9" gate="J$1" pin="1"/>
 </segment>
 </net>
 <net name="MTR_EN" class="0">
@@ -9329,14 +9329,14 @@ general purpose rectifier, 1 A</description>
 </net>
 <net name="DISTANCE" class="0">
 <segment>
-<wire x1="251.46" y1="149.86" x2="238.76" y2="149.86" width="0.1524" layer="91"/>
-<label x="238.76" y="149.86" size="1.016" layer="95" rot="R180" xref="yes"/>
-<pinref part="J9" gate="J$1" pin="1"/>
-</segment>
-<segment>
 <pinref part="U1" gate="U1" pin="A2"/>
 <wire x1="124.46" y1="180.34" x2="114.3" y2="180.34" width="0.1524" layer="91"/>
 <label x="114.3" y="180.34" size="1.016" layer="95" rot="R180" xref="yes"/>
+</segment>
+<segment>
+<wire x1="251.46" y1="147.32" x2="238.76" y2="147.32" width="0.1524" layer="91"/>
+<label x="238.76" y="147.32" size="1.016" layer="95" rot="R180" xref="yes"/>
+<pinref part="J9" gate="J$1" pin="2"/>
 </segment>
 </net>
 <net name="RST" class="0">
