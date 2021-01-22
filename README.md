@@ -1,35 +1,16 @@
-# isstracker
+# Use an opaque globe to show the position of the ISS using a laser
+This project is going to project the ISS location on a globe showing current position continuously. The system uses a Particle Argon, one stepper motor for longitude rotation, and one servo motor for latitude rotation. It also uses a LOT of other parts listed in the BOM to make this work.
+
+The goal is to provide a good looking device that is accurate and consistent. All of the motors and electronics must be hidden, and all parts must be independently moveable. So, the globe must be able to rotate without changing where the laser is pointing. The laser must work inside the globe independent of the base. The laser must also rotate 360 degrees longitude. The ISS does not go above or below ~60 degrees latitude, so a simple servo can be used for that.
 
 A Particle project named isstracker
 
-## Welcome to your project!
+I found a similar project using an ESP8266 about 5 years ago and I was intrigued. So, I started hacking something up, but my requirements became much more complex than the original project. I wanted full rotation and to be able to *spin* the globe sitting on a base without changing where the location of the point showing the ISS.
 
-Every new Particle project is composed of 3 important elements that you'll see have been created in your project directory for isstracker.
+It uses two independent sliprings which provide the ability to rotate the globe and the armature holding the laser without losing precision. It uses one 200 step NEMA stepper for longitude, and one 160 degree servo for the latitiude. The laser is from Sparkfun, but any laser that can be powered by 3 volts would work.
 
-#### ```/src``` folder:  
-This is the source folder that contains the firmware files for your project. It should *not* be renamed. 
-Anything that is in this folder when you compile your project will be sent to our compile service and compiled into a firmware binary for the Particle device that you have targeted.
+Pictures to follow
 
-If your application contains multiple files, they should all be included in the `src` folder. If your firmware depends on Particle libraries, those dependencies are specified in the `project.properties` file referenced below.
+## Building it
 
-#### ```.ino``` file:
-This file is the firmware that will run as the primary application on your Particle device. It contains a `setup()` and `loop()` function, and can be written in Wiring or C/C++. For more information about using the Particle firmware API to create firmware for your Particle device, refer to the [Firmware Reference](https://docs.particle.io/reference/firmware/) section of the Particle documentation.
-
-#### ```project.properties``` file:  
-This is the file that specifies the name and version number of the libraries that your project depends on. Dependencies are added automatically to your `project.properties` file when you add a library to a project using the `particle library add` command in the CLI or add a library in the Desktop IDE.
-
-## Adding additional files to your project
-
-#### Projects with multiple sources
-If you would like add additional files to your application, they should be added to the `/src` folder. All files in the `/src` folder will be sent to the Particle Cloud to produce a compiled binary.
-
-#### Projects with external libraries
-If your project includes a library that has not been registered in the Particle libraries system, you should create a new folder named `/lib/<libraryname>/src` under `/<project dir>` and add the `.h`, `.cpp` & `library.properties` files for your library there. Read the [Firmware Libraries guide](https://docs.particle.io/guide/tools-and-features/libraries/) for more details on how to develop libraries. Note that all contents of the `/lib` folder and subfolders will also be sent to the Cloud for compilation.
-
-## Compiling your project
-
-When you're ready to compile your project, make sure you have the correct Particle device target selected and run `particle compile <platform>` in the CLI or click the Compile button in the Desktop IDE. The following files in your project folder will be sent to the compile service:
-
-- Everything in the `/src` folder, including your `.ino` application file
-- The `project.properties` file for your project
-- Any libraries stored under `lib/<libraryname>/src`
+Instructions to follow
