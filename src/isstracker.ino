@@ -1,331 +1,654 @@
-/*
- * Project isstracker
- * Description:
- * Author:
- * Date:
- */
-#include "ArduinoJson.h"
-#include "MQTT.h"
+#include "Adafruit_mfGFX.h"
+#include "Adafruit_SSD1351_Photon.h"
 
-#define APP_ID                  21
+#define APP_ID              45
 
-#define LASER_ENABLE        DAC
+#define cs                  A5
+#define rst                 A3
+#define dc                  A4
 
-#define LASER_MOTOR_STEP          D1
-#define LASER_MOTOR_DIR           D0
-#define LASER_MOTOR_MS1           D2
-#define LASER_MOTOR_ENABLE        D3
-#define LASER_MOTOR_MS2           D4
-#define LASER_MOTOR_HOME          D5
+#define DEC_CALIBRATION     A1
+#define DISTANCE            A2
 
-#define BASE_MOTOR_ENABLE       RX
-#define BASE_MOTOR_STEP         A1
-#define BASE_MOTOR_DIR          A0
-#define BASE_MOTOR_MS1          A2
-#define BASE_MOTOR_MS2          A4
+#define mtr_ms2             D0
+#define mtr_en              D1
+#define mtr_dir             D2
+#define mtr_step            D3
+#define mtr_ms1             D4
+#define mtr_slp             D5
+#define SERVO               D6
+#define LED_DO              D8
+#define LED_CO              D7
 
-#define LATITUDE_HOME           D5
-#define LONGITUDE_HOME          D6
+#define FULL_STEP           1
+#define HALF_STEP           2
+#define QUARTER_STEP        3
+#define EIGHTH_STEP         4
 
-#define LAT_CLOCKWISE           LOW
-#define LAT_CTRCLKWISE          HIGH
-#define LON_CLOCKWISE           LOW
-#define LON_CTRCLKWISE          HIGH
+#define CLOCKWISE           1
+#define CCLOCKWISE          2
 
-#define LON_PRECISION           400
-#define LON_PRECISION_ADDR      0x00
+#define INC_CAL_ADDRESS     0
 
-#define LAT_PRECISION           144
-#define LAT_PRECISION_ADDR      0x02
+#define ONE_SECOND          1000
+#define TEN_SECONDS         (ONE_SECOND * 10)
+#define ONE_MINUTE          (ONE_SECOND * 60)
+#define TEN_MINUTES         (ONE_MINUTE * 10)
+#define THIRTY_MINUTES      (ONE_MINUTE * 30)
 
-#define ONE_SECOND          (1000)
-#define TEN_SECONDS         (10 * ONE_SECOND)
+#define	ISS_BLACK           0x0000
+#define	ISS_BLUE            0x001F
+#define	ISS_RED             0xF800
+#define	ISS_GREEN           0x07E0
+#define ISS_CYAN            0x07FF
+#define ISS_MAGENTA         0xF81F
+#define ISS_YELLOW          0xFFE0  
+#define ISS_WHITE           0xFFFF
 
-bool g_calibrated;
-bool g_enabled;
-bool g_needPosition;
-uint16_t g_latPrecision;
-uint16_t g_lonPrecision;
-int g_denominator;      // 9 for whole step, 18 for half steps, 36 for quarter steps
-int g_rounder;          // 5 for whole step, 9 for half steps, 18 for quarter steps
-double g_latitude;
+Timer issUpdate(5000, run_location_update);
+SerialLogHandler logHandler;
+Serial1LogHandler logHandler2(115200);
+
+Servo servo;
 double g_longitude;
-double g_lastLat;
-double g_lastLon;
-double g_latResolution;
-double g_lonResolution;
+double g_latitude;
+int g_lon;
+int g_lat;
 int g_appId;
-uint32_t g_lastISSRequest;
-char server[] = "172.24.1.13";
-MQTT g_mqtt(server, 1883, mqttCallback);
+int g_declinationPosition;
+int g_incOffset;
+int g_currentResolution;
+int g_motorAngle;
+int g_servoAngle;
+int g_motorDirection;
+int g_lastResetReason;
+int g_displayTimeout;
+int g_distance;
+int g_proximity;
+system_tick_t g_displayTimeoutMillis;
+bool g_querySuccess;
+bool g_runLocationQuery;
+bool g_inCalibration;
+bool g_motorDecCalibrated;
+bool g_motorHome;
+bool g_inclineHome;
+bool g_displayEnabled;
+String g_version = System.version() + "." + APP_ID;
 
-void calibrateMotorLocation()
+Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
+
+void set_motor_sleep(bool slp)
 {
-    int steps = 0;
-    Serial.println("Calibrating Motor");
-    digitalWrite(LASER_MOTOR_DIR, LAT_CLOCKWISE);
-
-    while (digitalRead(LATITUDE_HOME) == HIGH) {
-        digitalWrite(LASER_MOTOR_STEP, HIGH);
-        delay(30);
-        digitalWrite(LASER_MOTOR_STEP, LOW);
-        delay(30);
-        steps++;
-        Particle.process();
-    }
-    Serial.print("Moved ");
-    Serial.print(steps);
-    Serial.println(" to calibrate");
-/*
-    digitalWrite(BASE_MOTOR_DIR, LON_CLOCKWISE);
-
-    while (digitalRead(LONGITUDE_HOME) == LOW) {
-        digitalWrite(BASE_MOTOR_STEP, HIGH);
-        delay(1);
-        digitalWrite(BASE_MOTOR_STEP, LOW);
-        delay(1);
-    }
-*/
-    g_calibrated = true;
-    g_latitude = 0;
-    g_longitude = 0;
-}
-
-// recieve message
-void mqttCallback(char* topic, byte* payload, unsigned int length) 
-{
-    if (strcmp(topic, "/iss/calibrate") == 0) {
-        calibrateMotorLocation();
-    }
-}
-
-// "iss_position": {"longitude": "-74.2342", "latitude": "-3.9524"}, "
-void getISSLocation(const char *event, const char *data)
-{
-    Serial.println(data);
-    StaticJsonDocument<256> doc;
-    DeserializationError err = deserializeJson(doc, data);
-    if (!err) {
-        g_latitude = doc["iss_position"]["latitude"].as<double>();
-        g_longitude = doc["iss_position"]["longitude"].as<double>();
-        updateLaserLocation();
+    if (slp) {
+        Log.info("%s: Putting motor to sleep", __FUNCTION__);
+        digitalWrite(mtr_slp, LOW);
+        delay(250);
     }
     else {
-        Serial.print("Cannot deserialze reponse: ");
+        Log.info("%s: Waking motor up", __FUNCTION__);
+        digitalWrite(mtr_slp, HIGH);
+        delay(250);
     }
 }
 
-void moveLatitude(int steps)
+void set_motor_home()
 {
-    Serial.print("Moving ");
-    Serial.print(steps);
-    Serial.println(" steps latitude");
-    if (steps < 0) {
-        digitalWrite(LASER_MOTOR_DIR, LAT_CLOCKWISE);
-        steps = steps * -1;
-    }
-    else
-        digitalWrite(LASER_MOTOR_DIR, LAT_CTRCLKWISE);
+    set_motor_step_resolution(FULL_STEP);
+    set_motor_enabled(true);
+    set_motor_sleep(false);
 
-    for (int i = 0; i < steps; i++) {
-        digitalWrite(LASER_MOTOR_STEP, HIGH);
+    // If we seem like we are home, make a
+    // quarter turn so we can rotate and hit
+    // the leading edge of the sensor to be consistent
+    Log.info("%s: Moving motor away from sensor...", __FUNCTION__);
+    set_motor_dir(CLOCKWISE);
+    if (digitalRead(DEC_CALIBRATION) == LOW) {
+        for (int i = 0; i < 50; i++) {
+            digitalWrite(mtr_step, HIGH);
+            delay(1);
+            digitalWrite(mtr_step, LOW);
+            delay(1);
+        }
+    }
+
+    // This will be slow!
+    Log.info("%s: Moving motor back to home!", __FUNCTION__);
+    set_motor_dir(CCLOCKWISE);
+    for (int i = 0; i < 200; i++) {
+        digitalWrite(mtr_step, HIGH);
         delay(1);
-        digitalWrite(LASER_MOTOR_STEP, LOW);
-        delay(1);
+        digitalWrite(mtr_step, LOW);
+        delay(200);
+        if (digitalRead(DEC_CALIBRATION) == LOW) {
+            break;
+        }
         Particle.process();
     }
+    set_motor_sleep(true);
+    g_declinationPosition = 0;
+    g_motorHome = true;
 }
 
-void moveLongitude(int steps)
+void reset_motor()
 {
-    if (steps < 0)
-        digitalWrite(BASE_MOTOR_DIR, HIGH);
+    set_motor_sleep(false);
+    set_motor_enabled(true);
+    set_motor_dir(CLOCKWISE);
+    set_motor_step_resolution(FULL_STEP);
+    set_motor_home();
+    set_motor_sleep(true);
+    Log.info("%s: motor reset complete", __FUNCTION__);
+}
 
-    for (int i = 0; i < steps; i++) {
-        digitalWrite(BASE_MOTOR_STEP, HIGH);
-        delay(1);
-        digitalWrite(BASE_MOTOR_STEP, LOW);
-        delay(1);
-        Particle.process();
+void set_motor_dir(int dir)
+{
+    switch (dir) {
+        case CCLOCKWISE:
+            digitalWrite(mtr_dir, HIGH);
+            g_motorDirection = CCLOCKWISE;
+            Log.info("%s: Set motor direction to clockwise", __FUNCTION__);
+            break;
+        case CLOCKWISE:
+        default:
+            digitalWrite(mtr_dir, LOW);
+            g_motorDirection = CLOCKWISE;
+            Log.info("%s: Set motor direction to counter clockwise", __FUNCTION__);
+            break;
     }
 }
 
-void updateLaserLocation()
+void set_motor_step_resolution(int step)
 {
-    int latSteps = 0;
+    switch (step) {
+        case HALF_STEP:
+            digitalWrite(mtr_ms1, HIGH);
+            digitalWrite(mtr_ms2, LOW);
+            g_currentResolution = 400;
+            Log.info("%s: Set stepper resolution to half steps (400)", __FUNCTION__);
+            break;
+        case QUARTER_STEP:
+            digitalWrite(mtr_ms1, LOW);
+            digitalWrite(mtr_ms2, HIGH);
+            g_currentResolution = 800;
+            Log.info("%s: Set stepper resolution to quarter steps (800)", __FUNCTION__);
+            break;
+        case EIGHTH_STEP:
+            digitalWrite(mtr_ms1, HIGH);
+            digitalWrite(mtr_ms2, HIGH);
+            g_currentResolution = 1600;
+            Log.info("%s: Set stepper resolution to eighth steps (1600)", __FUNCTION__);
+            break;
+        case FULL_STEP:
+        default:
+            digitalWrite(mtr_ms1, LOW);
+            digitalWrite(mtr_ms2, LOW);
+            g_currentResolution = 200;
+            Log.info("%s: Set stepper resolution to single steps (200)", __FUNCTION__);
+            break;
+    }
+}
 
-    if (g_needPosition) {
-        g_lastLat = g_latitude;
-        latSteps = static_cast<int>(g_latitude / g_latResolution + .5);
-        g_needPosition = false;
+void set_motor_enabled(bool en)
+{
+    if (en) {
+        digitalWrite(mtr_en, LOW);
+        Log.info("%s: motor is disabled", __FUNCTION__);
     }
     else {
-        double delta = g_latitude - g_lastLat;
-        Serial.print("distance traveled: ");
-        Serial.println(delta);
-        if (delta >= 0 && delta >= g_latResolution) {
-            g_lastLat += g_latResolution;
-            latSteps = 1;
+        digitalWrite(mtr_en, HIGH);
+        Log.info("%s: motor is enabled", __FUNCTION__);
+    }
+}
+ 
+ /**
+  * When we need to move the motor, turn the outputs
+  * on which is what SLP going HIGH does. This should
+  * help keep the motor cooler during operation.
+  */
+void set_motor_position(int angle)
+{
+    g_motorAngle = angle;
+
+    set_motor_sleep(false);
+
+    if ((g_declinationPosition == g_currentResolution - 1) && angle >= 0) {
+        g_declinationPosition = -1;
+    }
+    int steps = angle - g_declinationPosition;
+    if (steps > 0) {
+        Log.info("%s: Moving motor %d steps", __FUNCTION__, steps);
+        g_motorHome = false;
+    }
+    for (int i = 0; i < steps; i++) {
+        digitalWrite(mtr_step, HIGH); //Trigger one step forward
+        delay(1);
+        digitalWrite(mtr_step, LOW); //Pull step pin low so it can be triggered again
+        delay(1);
+        g_declinationPosition++;
+    }
+
+    set_motor_sleep(true);
+}
+
+void iss_location(const char *event, const char *data) 
+{
+    JSONValue outerObj = JSONValue::parseCopy(data);
+
+    g_querySuccess = false;
+
+    JSONObjectIterator iter(outerObj);
+    while (iter.next()) {
+        if (iter.value().isObject()) {
+            JSONObjectIterator location(iter.value());
+            while (location.next()) {
+                if (location.name() == "longitude") {
+                    g_longitude = location.value().toDouble();
+                    g_lon = 180 - g_longitude;
+                }
+                if (location.name() == "latitude") {
+                    g_latitude = location.value().toDouble();
+                    set_servo_angle();
+                }
+            }
         }
-        if (delta <= 0 && (delta * -1) >= g_latResolution) {
-            g_lastLat -= g_latResolution;
-            latSteps = -1;
+        else {
+            if (iter.name() == "message") {
+                if (iter.value().toString() == "success") {
+                    g_querySuccess = true;
+                }
+            }
         }
     }
+
+    if (g_querySuccess) {
+        set_inclination();
+        set_declination();
+        Log.info("%s: %f, %f, inclination %d, declination %d, motor position %d", __FUNCTION__, g_latitude, g_longitude, g_servoAngle, g_motorAngle, g_declinationPosition);
+    }
+    else {
+        Log.info("JSON did not work right");
+    }
+}
+
+int set_servo_angle()
+{
+    int angle = static_cast<int>(g_latitude + .5);
+    angle += 90;
+    angle += g_incOffset;
+    g_servoAngle = angle;
+    Log.info("%s: Angle set to %d", __FUNCTION__, angle);
+    return angle;
+}
+
+void run_location_update()
+{
+    if (!g_inCalibration)
+        g_runLocationQuery = true;
+}
+
+void set_inclination(int angle)
+{
+    if (angle > 20 && angle < 160) {
+        servo.write(angle);
+        g_servoAngle = angle;
+    }
+    if (g_servoAngle == 90)
+        g_inclineHome = true;
     
-    moveLatitude(steps);
-//    moveLongitude(lonSteps);
+    Log.info("%s: Inclination set to %d", __FUNCTION__, g_servoAngle);
 }
 
-int disableLaser(String)
+void set_inclination()
 {
-    digitalWrite(LASER_ENABLE, LOW);
+    static int lastAngle = 200;
+
+    if (g_inCalibration)
+        return;
+
+    if (lastAngle != g_servoAngle) {
+        servo.write(g_servoAngle);
+        lastAngle = g_servoAngle;
+    }
+    Log.info("%s: Inclination set to %d", __FUNCTION__, g_servoAngle);
+}
+
+void set_declination()
+{  
+    int angle = 0;
+    int degrees = 0;
+
+    if (g_inCalibration)
+        return;
+
+    degrees = static_cast<int>(g_longitude * 10);
+    angle = map(degrees, 0, 3600, 0, g_currentResolution);
+
+    if (angle < 0)
+        angle = g_currentResolution + angle;
+
+    set_motor_position(angle);
+}
+
+int web_calibrate(String p)
+{
+    if (p.toInt() != 0) {
+        g_inCalibration = true;
+        Log.info("%s: starting calibration", __FUNCTION__);
+    }
+    else {
+        g_inCalibration = false;
+        Log.info("%s: ending calibration", __FUNCTION__);
+    }
+
+    return p.toInt();
+}
+
+int web_rotate_clockwise(String p)
+{
+    int steps = p.toInt();
+    steps *= g_currentResolution;
+
+    if (!g_inCalibration)
+        return -1;
+
+    if (steps >= 0 && steps < 360) {
+        Log.info("%s: Moving declination motor %d steps clockwise", __FUNCTION__, steps);
+        set_motor_dir(CLOCKWISE);
+        set_motor_position(steps);
+        return steps;
+    }
+
     return 0;
 }
 
-void setLatitudePrecision()
+int web_rotate_cclockwise(String p)
 {
-    int ms1;
-    int ms2;
+    int steps = p.toInt();
+    steps *= g_currentResolution;
 
-    EEPROM.get(LAT_PRECISION_ADDR, g_latPrecision);
+    if (!g_inCalibration)
+        return -1;
 
-    if (g_latPrecision == 0xffff) {
-        Serial.print("Unable to retrieve precision from EEPROM, defaulting to 400 and storing");
-        g_latPrecision = LAT_PRECISION;
-        EEPROM.put(LAT_PRECISION_ADDR, g_latPrecision);
+    if (steps > 0 && steps < 180) {
+        Log.info("%s: Moving declination motor %d steps counter clockwise", __FUNCTION__, steps);
+        set_motor_dir(CCLOCKWISE);
+        set_motor_position(steps);
+        return steps;
     }
 
-    switch (g_latPrecision) {
-        case 48:
-            ms1 = LOW;
-            ms2 = LOW;
-            g_latResolution = 7.5;
-            break;
-        case 400:
-            ms1 = HIGH;
-            ms2 = LOW;
-            g_latResolution = 3.75;
-            break;
-        case 800:
-            ms1 = LOW;
-            ms2 = HIGH;
-            g_latResolution = 1.875;
-            break;
-        case 1600:
-        default:
-            ms1 = HIGH;
-            ms2 = HIGH;
-            g_latResolution = .9375;
-            break;
-    }
-
-    Serial.print("Latitude angular resolution is now 1 step to ");
-    Serial.print(g_latResolution);
-    Serial.print(" degrees");
-    digitalWrite(LASER_MOTOR_MS1, ms1);
-    digitalWrite(LASER_MOTOR_MS2, ms2);
+    return 0;
 }
 
-void setLongitudePrecision()
+int web_set_motor_resolution(String p)
 {
-    int ms1;
-    int ms2;
+    int res = p.toInt();
 
-    EEPROM.get(LON_PRECISION_ADDR, g_lonPrecision);
-
-    if (g_lonPrecision == 0xffff) {
-        Serial.print("Unable to retrieve precision from EEPROM, defaulting to 400 and storing");
-        g_lonPrecision = LON_PRECISION;
-        EEPROM.put(LON_PRECISION, g_lonPrecision);
-    }
-
-    switch (g_lonPrecision) {
-        case 200:
-            ms1 = LOW;
-            ms2 = LOW;
-            g_lonResolution = 1.8;
-            break;
-        case 400:
-            ms1 = HIGH;
-            ms2 = LOW;
-            g_lonResolution = .9;
-            break;
-        case 800:
-            ms1 = LOW;
-            ms2 = HIGH;
-            g_lonResolution = .45;
-            break;
-        case 1600:
-            ms1 = HIGH;
-            ms2 = HIGH;
-            g_lonResolution = .225;
-            break;
-        default:
-            ms1 = HIGH;
-            ms2 = LOW;
-            g_lonResolution = .9;
-            break;
-    }
-
-    digitalWrite(BASE_MOTOR_MS1, ms1);
-    digitalWrite(BASE_MOTOR_MS2, ms2);
+    set_motor_step_resolution(res);
+    return g_currentResolution;
 }
 
+int web_jog_inclination(String p)
+{
+    int jog = p.toInt();
+
+    if (g_inCalibration && g_inclineHome) {
+        if (jog > 0) {
+            g_servoAngle++;
+            servo.write(g_servoAngle);
+            g_incOffset++;
+        }
+        if (jog < 0) {
+            g_servoAngle--;
+            servo.write(g_servoAngle);
+            g_incOffset--;
+        }
+        EEPROM.put(INC_CAL_ADDRESS, g_incOffset);
+    }
+
+    Log.info("%s: Inclination offset is now %d", __FUNCTION__, g_incOffset);
+    return g_incOffset;
+}
+
+int web_set_incline_offset(String p)
+{
+    int offset = p.toInt();
+
+    if (offset > -11 && offset < 11) {
+        g_incOffset = offset;
+        EEPROM.put(INC_CAL_ADDRESS, offset);
+    }
+
+    Log.info("%s: Inclination offset set to %d", __FUNCTION__, g_incOffset);
+    return offset;
+}
+
+int web_set_display_timeout(String p)
+{
+    int timeout = p.toInt() * 1000;
+
+    if (timeout >= TEN_SECONDS && timeout <= TEN_MINUTES) {
+        g_displayTimeout = timeout;
+        return timeout;
+    }
+    return g_displayTimeout;
+}
+
+void display_update()
+{
+    if (!g_displayEnabled) {
+        return;
+    }
+
+    display.setCursor(0,0);
+    display.setTextSize(1);
+    display.setTextColor(ISS_WHITE, ISS_BLACK);
+    display.printf("Version: %s\n\n", g_version.c_str());
+    display.setTextColor(ISS_CYAN, ISS_BLACK);
+    display.printf("ISS Location\n");
+    if (g_latitude < 0) {
+        display.setTextColor(ISS_RED, ISS_BLACK);
+        display.printf("Lat: %10.06f  \n", g_latitude);
+    }
+    else {
+        display.setTextColor(ISS_GREEN, ISS_BLACK);
+        display.printf("Lat:  %10.06f  \n", g_latitude);
+    }
+    if (g_longitude < 0) {
+        display.setTextColor(ISS_RED, ISS_BLACK);
+        display.printf("Lon: %10.06f  \n", g_longitude);
+    }
+    else {
+        display.setTextColor(ISS_GREEN, ISS_BLACK);
+        display.printf("Lon:  %10.06f  \n", g_longitude);
+    }
+    Log.info("%s: Lat: %f, Lon: %f", __FUNCTION__, g_latitude, g_longitude);
+}
+
+bool detect_motion()
+{
+    if (digitalRead(DISTANCE) == HIGH) {
+        if (g_displayTimeoutMillis < millis()) {
+            g_displayEnabled = true;
+            g_displayTimeoutMillis = millis() + g_displayTimeout;
+            return true;
+        }
+    }
+    else {
+        if (g_displayTimeoutMillis < millis()) {
+            g_displayEnabled = false;
+            display.fillScreen(0);
+        }
+    }
+    return false;
+}
+
+int web_set_proximity_distance(String p)
+{
+    int distance = p.toInt();
+    if (distance > 12 && distance < 150) {
+        g_proximity = distance;
+    }
+    return g_proximity;
+}
+
+void print_reset_reason()
+{
+    switch (System.resetReason()) {
+        case RESET_REASON_UNKNOWN:
+            Log.info("setup: Last Reset: Unknown reset!");
+            display.println("Unknown reset!");
+            break;
+        case RESET_REASON_PIN_RESET:
+            Log.info("setup: Last Reset: Reset due to reset button press!");
+            display.println("Pushbutton reset!");
+            break;
+        case RESET_REASON_POWER_MANAGEMENT:
+            Log.info("setup: Last Reset: Reset due to power management!");
+            display.println("Reset due to PM!");
+            break;
+        case RESET_REASON_WATCHDOG:
+            Log.info("setup: Last Reset: Watchdog reset!");
+            display.println("Watchdog reset!");
+            break;
+        case RESET_REASON_UPDATE:
+            Log.info("setup: Last Reset: Update finished!");
+            display.println("Update finished!");
+            break;
+        case RESET_REASON_UPDATE_ERROR:
+            Log.info("setup: Last Reset: Update failed!");
+            display.println("Update failed!");
+            break;
+        case RESET_REASON_UPDATE_TIMEOUT:
+            Log.info("setup: Last Reset: Update timed out!");
+            display.println("Update timed out!");
+            break;
+        case RESET_REASON_FACTORY_RESET:
+            Log.info("setup: Last Reset: Factory reset performed!");
+            display.println("actory reset");
+            break;
+        case RESET_REASON_SAFE_MODE:
+            Log.info("setup: Last Reset: Reset into safe mode!");
+            display.println("Safe mode!");
+            break;
+        case RESET_REASON_DFU_MODE:
+            Log.info("setup: Last Reset: Reset from DFU!");
+            display.println("DFU!");
+            break;
+        case RESET_REASON_PANIC:
+            Log.info("setup: Last Reset: System panic!");
+            display.println("System panic!");
+            break;
+        case RESET_REASON_USER:
+            Log.info("setup: Last Reset: User code called for a reset!");
+            display.println("User reset!");
+            break;
+        default:
+        case RESET_REASON_NONE:
+            Log.info("setup: No reset reason given, resetReason returned %d!", System.resetReason());
+            display.println("Unknown");
+            break;
+    }
+}
 
 void setup() 
 {
-    Serial.begin(115200);
-
+    g_longitude = 0.0;
+    g_latitude = 0.0;
+    g_lat = 90;
+    g_lon = 0;
+    g_runLocationQuery = true;
+    g_inCalibration = false;
+    g_motorDecCalibrated = true;
+    g_incOffset = 0;
+    g_declinationPosition = 0;
     g_appId = APP_ID;
-    g_lastISSRequest = 0;
-    g_calibrated = false;
-    g_enabled = true;
-    g_needPosition = true;
-    g_latitude = 0;
-    g_longitude = 0;
-    g_lastLon = 0;
-    g_lastLat = 0;
-    
-    Serial.print("Starint app with ID ");
-    Serial.println(g_appId);
-    Serial.print("Ram available: ");
-    Serial.println(System.freeMemory());
+    g_currentResolution = 800;
+    g_motorHome = false;
+    g_inclineHome = false;
+    g_servoAngle = 90;
+    g_displayEnabled = true;
+    g_displayTimeout = ONE_MINUTE;
+    g_displayTimeoutMillis = millis() + ONE_MINUTE;
+    g_proximity = 60;
 
-    pinMode(LASER_ENABLE, OUTPUT);
+    System.enableFeature(FEATURE_RESET_INFO);
 
-    pinMode(LASER_MOTOR_DIR, OUTPUT);
-    pinMode(LASER_MOTOR_ENABLE, OUTPUT);
-    pinMode(LASER_MOTOR_MS1, OUTPUT);
-    pinMode(LASER_MOTOR_MS2, OUTPUT);
-    pinMode(LASER_MOTOR_STEP, OUTPUT);
-    pinMode(LATITUDE_HOME, INPUT);
+    display.begin();
+    display.fillScreen(0);
+    display.setTextColor(ISS_WHITE, ISS_BLACK);
+    display.setCursor(0,0);
 
-    pinMode(BASE_MOTOR_DIR, OUTPUT);
-    pinMode(BASE_MOTOR_ENABLE, OUTPUT);
-    pinMode(BASE_MOTOR_MS1, OUTPUT);
-    pinMode(BASE_MOTOR_MS2, OUTPUT);
-    pinMode(BASE_MOTOR_STEP, OUTPUT);
-    pinMode(LONGITUDE_HOME, INPUT);
+    EEPROM.get(INC_CAL_ADDRESS, g_incOffset);
+    Log.info("%s: inclination offset is %d", __FUNCTION__, g_incOffset);
+    display.printf("Servo offset: %d\n", g_incOffset);
 
-    digitalWrite(LASER_ENABLE, HIGH);
-    digitalWrite(BASE_MOTOR_ENABLE, HIGH);
-    digitalWrite(LASER_MOTOR_ENABLE, LOW);
-
-    Particle.subscribe("hook-response/iss_location", getISSLocation, MY_DEVICES);
-//    Particle.function("laser", disableLaser);
-
-    setLatitudePrecision();
-    setLongitudePrecision();
+    pinMode(mtr_ms1, OUTPUT);
+    pinMode(mtr_ms2, OUTPUT);
+    pinMode(mtr_en, OUTPUT);
+    pinMode(mtr_step, OUTPUT);
+    pinMode(mtr_dir, OUTPUT);
+    pinMode(DEC_CALIBRATION, INPUT);
+    pinMode(DISTANCE, INPUT);
 
 
-    calibrateMotorLocation();
+    g_lastResetReason = System.resetReason();
+
+    servo.attach(SERVO);
+    Particle.subscribe("hook-response/iss_location", iss_location, MY_DEVICES);
+    Particle.function("calibrate", web_calibrate);
+    Particle.function("clockwise", web_rotate_clockwise);
+    Particle.function("cclockwise", web_rotate_cclockwise);
+    Particle.function("incline", web_jog_inclination);
+    Particle.function("resolution", web_set_motor_resolution);
+    Particle.function("offset", web_set_incline_offset);
+    Particle.function("disptimeout", web_set_display_timeout);
+    Particle.function("proximity", web_set_proximity_distance);
+    Particle.variable("version", g_appId);
+    Particle.variable("inc_cal", g_incOffset);
+    Particle.variable("declination", g_declinationPosition);
+    Particle.variable("reset", g_lastResetReason);
+    Particle.variable("distance", g_distance);
+
+    display.printf("Cloud complete\n");
+    display.printf("Motor Cal...");
+    reset_motor();
+    set_motor_step_resolution(QUARTER_STEP);        // 800 steps per revolution, .45 deg per step
+    set_motor_dir(CCLOCKWISE);
+    g_servoAngle = 90;
+    servo.write(g_servoAngle);
+    display.printf("Done!\n");
+
+    print_reset_reason();
+    issUpdate.start();
+
+    Log.info("%s: Done with setup for app id %d", __FUNCTION__, g_appId);
+    display.printf("Setup ver %d\n", g_appId);
+    delay(3000);
+    display.fillScreen(0);
 }
 
 void loop() 
 {
-    if (millis() > (g_lastISSRequest + TEN_SECONDS)) {
-        Particle.publish("iss_location", "", PRIVATE);
-        g_lastISSRequest = millis();
+    static int lastHour = 24;
+
+    if (g_runLocationQuery) {
+        Log.info("%s: Getting location data", __FUNCTION__);
+        Particle.publish("iss_location", PRIVATE);
+        g_runLocationQuery = false;
     }
+
+    if (Time.hour() != lastHour) {
+        Particle.syncTime();
+        waitUntil(Particle.syncTimeDone);
+        lastHour = Time.hour();
+    }
+    if (g_inCalibration) {
+        if (!g_motorHome)
+            set_motor_home();
+
+        if (!g_inclineHome)
+            set_inclination(90);
+    }
+    detect_motion();
+    display_update();
 }
