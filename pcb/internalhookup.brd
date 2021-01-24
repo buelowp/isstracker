@@ -85,7 +85,7 @@
 <layer number="116" name="Patch_BOT" color="9" fill="4" visible="yes" active="yes"/>
 <layer number="118" name="Rect_Pads" color="7" fill="1" visible="yes" active="yes"/>
 <layer number="121" name="_tsilk" color="7" fill="1" visible="yes" active="yes"/>
-<layer number="122" name="_bsilk" color="7" fill="1" visible="yes" active="yes"/>
+<layer number="122" name="_bsilk" color="7" fill="1" visible="no" active="yes"/>
 <layer number="123" name="tTestmark" color="7" fill="1" visible="yes" active="yes"/>
 <layer number="124" name="bTestmark" color="7" fill="1" visible="yes" active="yes"/>
 <layer number="125" name="_tNames" color="7" fill="1" visible="yes" active="yes"/>
@@ -150,15 +150,22 @@
 <wire x1="26.65" y1="0" x2="26.65" y2="16.18" width="0" layer="20"/>
 <wire x1="26.65" y1="16.18" x2="0" y2="16.18" width="0" layer="20"/>
 <wire x1="0" y1="16.18" x2="0" y2="0" width="0" layer="20"/>
-<text x="12.954" y="11.557" size="0.8128" layer="121">+3v3</text>
-<text x="12.827" y="4.064" size="0.8128" layer="121">+5V</text>
-<text x="10.287" y="11.557" size="0.8128" layer="121">GND</text>
+<text x="11.557" y="4.064" size="0.8128" layer="121">+5V</text>
 <text x="20.32" y="11.176" size="0.8128" layer="121" rot="R180">GND</text>
-<text x="10.287" y="4.064" size="0.8128" layer="121">GND</text>
-<text x="18.161" y="4.064" size="0.8128" layer="121">DO</text>
-<text x="20.701" y="4.064" size="0.8128" layer="121">CO</text>
+<text x="17.907" y="4.064" size="0.8128" layer="121">GND</text>
 <text x="24.638" y="4.191" size="0.8128" layer="121" rot="R90">SERVO</text>
-<text x="2.413" y="10.922" size="0.8128" layer="112">100uf</text>
+<text x="25.4" y="5.08" size="1.016" layer="122" rot="MR0">ISS Hookup
+(C) Peter Buelow
+Jan 2021
+Version 1.0</text>
+<text x="12.446" y="5.715" size="0.6096" layer="121" rot="R90">10uf</text>
+<text x="20.193" y="14.732" size="0.6096" layer="121">SERVO</text>
+<text x="15.875" y="0.127" size="0.6096" layer="121">CONTROL</text>
+<text x="23.241" y="7.366" size="0.6096" layer="121" rot="R90">1k</text>
+<text x="3.81" y="2.54" size="0.6096" layer="121" rot="R90">AMS1117</text>
+<text x="9.525" y="9.017" size="0.6096" layer="121" rot="R90">LASER</text>
+<text x="20.447" y="10.033" size="0.6096" layer="121" rot="R180">SMB2222</text>
+<text x="3.556" y="11.049" size="0.6096" layer="121">100uf</text>
 </plain>
 <libraries>
 <library name="SparkFun-Capacitors" urn="urn:adsk.eagle:library:510">
@@ -704,12 +711,10 @@ Note, that not all DRC settings must be set by the manufacturer. Several can be 
 </element>
 <element name="J2" library="SparkFun-Connectors" library_urn="urn:adsk.eagle:library:513" package="1X03" package3d_urn="urn:adsk.eagle:package:38063/1" value="SERVO" x="19.05" y="12.7" smashed="yes">
 <attribute name="NAME" x="17.78" y="14.097" size="0.6096" layer="25" font="vector" ratio="20"/>
-<attribute name="VALUE" x="20.447" y="14.224" size="0.6096" layer="27" font="vector" ratio="20"/>
 </element>
 <element name="R1" library="SparkFun-Resistors" library_urn="urn:adsk.eagle:library:532" package="0805" package3d_urn="urn:adsk.eagle:package:39651/1" value="1k" x="21.717" y="7.874" smashed="yes" rot="R90">
 <attribute name="NAME" x="20.828" y="7.874" size="0.6096" layer="25" font="vector" ratio="20" rot="R90" align="bottom-center"/>
 <attribute name="PROD_ID" value="RES-11622" x="21.717" y="7.874" size="1.778" layer="27" rot="R90" display="off"/>
-<attribute name="VALUE" x="22.606" y="7.874" size="0.6096" layer="27" font="vector" ratio="20" rot="R90" align="top-center"/>
 </element>
 <element name="Q1" library="SparkFun-DiscreteSemi" library_urn="urn:adsk.eagle:library:514" package="SOT23-3" package3d_urn="urn:adsk.eagle:package:38446/1" value="600mA/40V" x="18.288" y="7.747" smashed="yes" rot="R90">
 <attribute name="NAME" x="18.288" y="6.096" size="0.6096" layer="25" font="vector" ratio="20" rot="R180" align="bottom-center"/>
@@ -718,15 +723,11 @@ Note, that not all DRC settings must be set by the manufacturer. Several can be 
 <element name="J5" library="SparkFun-Connectors" library_urn="urn:adsk.eagle:library:513" package="1X06" package3d_urn="urn:adsk.eagle:package:38009/1" value="CONTROL" x="24.13" y="2.54" smashed="yes" rot="R180">
 <attribute name="NAME" x="9.017" y="1.27" size="0.6096" layer="25" font="vector" ratio="20" rot="R270"/>
 <attribute name="PROD_ID" value="CONN-08437" x="24.13" y="2.54" size="0.8128" layer="27" rot="R180" display="off"/>
-<attribute name="VALUE" x="25.4" y="4.572" size="0.6096" layer="27" font="vector" ratio="20" rot="R180"/>
 </element>
-<element name="CN1" library="adafruit" library_urn="urn:adsk.eagle:library:420" package="JST-PH-2-THM-RA" package3d_urn="urn:adsk.eagle:package:6240694/1" value=" LASER" x="12.7" y="10.16" smashed="yes">
-<attribute name="NAME" x="14.13" y="15.23" size="1.27" layer="25" font="vector" rot="R180"/>
-</element>
+<element name="CN1" library="adafruit" library_urn="urn:adsk.eagle:library:420" package="JST-PH-2-THM-RA" package3d_urn="urn:adsk.eagle:package:6240694/1" value=" LASER" x="12.7" y="10.16" smashed="yes"/>
 <element name="C1" library="SparkFun-Capacitors" library_urn="urn:adsk.eagle:library:510" package="0805" package3d_urn="urn:adsk.eagle:package:37429/1" value="10uf" x="10.922" y="6.604" smashed="yes" rot="R90">
 <attribute name="NAME" x="10.033" y="6.604" size="0.6096" layer="25" font="vector" ratio="20" rot="R90" align="bottom-center"/>
 <attribute name="PROD_ID" value="CAP-08064" x="10.922" y="6.604" size="0.4064" layer="27" rot="R90" display="off"/>
-<attribute name="VALUE" x="11.811" y="6.604" size="0.6096" layer="27" font="vector" ratio="20" rot="R90" align="top-center"/>
 </element>
 <element name="U1" library="AMS1117-3.3" package="SOT229P700X180-4N" value="AMS1117-3.3" x="4.699" y="5.08" smashed="yes" rot="R90">
 <attribute name="AVAILABILITY" value="Unavailable" x="4.699" y="5.08" size="1.016" layer="27" rot="R90" display="off"/>
@@ -758,8 +759,6 @@ Note, that not all DRC settings must be set by the manufacturer. Several can be 
 <wire x1="8.044" y1="2.79" x2="2.56" y2="8.274" width="1.27" layer="1"/>
 <contactref element="J5" pad="3"/>
 <contactref element="J5" pad="2"/>
-<wire x1="19.05" y1="2.54" x2="21.59" y2="2.54" width="0" layer="19" extent="1-1"/>
-<wire x1="16.51" y1="2.54" x2="19.05" y2="2.54" width="0" layer="19" extent="1-1"/>
 </signal>
 <signal name="+5V">
 <contactref element="Q1" pad="3"/>
@@ -767,7 +766,6 @@ Note, that not all DRC settings must be set by the manufacturer. Several can be 
 <contactref element="J2" pad="2"/>
 <contactref element="C1" pad="2"/>
 <contactref element="J5" pad="6"/>
-<wire x1="11.19" y1="2.78" x2="11.43" y2="2.54" width="1.27" layer="1"/>
 <wire x1="11.43" y1="2.54" x2="13.97" y2="2.54" width="1.27" layer="1"/>
 <contactref element="U1" pad="3"/>
 <wire x1="8.044" y1="7.37" x2="8.1416" y2="7.4676" width="1.27" layer="1"/>
@@ -792,7 +790,6 @@ Note, that not all DRC settings must be set by the manufacturer. Several can be 
 <contactref element="CN1" pad="1"/>
 <contactref element="U1" pad="2"/>
 <wire x1="5.08" y1="8.044" x2="8.044" y2="5.08" width="1.27" layer="1"/>
-<wire x1="6.35" y1="6.774" x2="8.044" y2="5.08" width="1.27" layer="1"/>
 <wire x1="5.06" y1="12.7" x2="5.08" y2="12.68" width="1.27" layer="1"/>
 <wire x1="5.08" y1="12.68" x2="5.08" y2="11.43" width="1.27" layer="1"/>
 <wire x1="5.08" y1="11.43" x2="5.08" y2="8.044" width="1.27" layer="1"/>
@@ -833,6 +830,10 @@ Note, that not all DRC settings must be set by the manufacturer. Several can be 
 </board>
 </drawing>
 <compatibility>
+<note version="6.3" minversion="6.2.2" severity="warning">
+Since Version 6.2.2 text objects can contain more than one line,
+which will not be processed correctly with this version.
+</note>
 <note version="8.2" severity="warning">
 Since Version 8.2, EAGLE supports online libraries. The ids
 of those online libraries will not be understood (or retained)

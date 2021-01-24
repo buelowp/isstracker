@@ -1,7 +1,8 @@
 #include "Adafruit_mfGFX.h"
 #include "Adafruit_SSD1351_Photon.h"
+#include "dotstar.h"
 
-#define APP_ID              45
+#define APP_ID              47
 
 #define cs                  A5
 #define rst                 A3
@@ -45,6 +46,8 @@
 #define ISS_YELLOW          0xFFE0  
 #define ISS_WHITE           0xFFFF
 
+#define NUMPIXELS           6
+
 Timer issUpdate(5000, run_location_update);
 SerialLogHandler logHandler;
 Serial1LogHandler logHandler2(115200);
@@ -76,6 +79,7 @@ bool g_displayEnabled;
 String g_version = System.version() + "." + APP_ID;
 
 Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
+Adafruit_DotStar leds = Adafruit_DotStar(NUMPIXELS, LED_DO, LED_CO);
 
 void set_motor_sleep(bool slp)
 {
@@ -209,13 +213,12 @@ void set_motor_position(int angle)
 {
     g_motorAngle = angle;
 
-    set_motor_sleep(false);
-
     if ((g_declinationPosition == g_currentResolution - 1) && angle >= 0) {
         g_declinationPosition = -1;
     }
     int steps = angle - g_declinationPosition;
     if (steps > 0) {
+        set_motor_sleep(false);
         Log.info("%s: Moving motor %d steps", __FUNCTION__, steps);
         g_motorHome = false;
     }
@@ -227,7 +230,8 @@ void set_motor_position(int angle)
         g_declinationPosition++;
     }
 
-    set_motor_sleep(true);
+    if (steps > 0)
+        set_motor_sleep(true);
 }
 
 void iss_location(const char *event, const char *data) 
@@ -436,6 +440,7 @@ int web_set_display_timeout(String p)
 void display_update()
 {
     if (!g_displayEnabled) {
+        display.println("ERROR");
         return;
     }
 
@@ -461,7 +466,7 @@ void display_update()
         display.setTextColor(ISS_GREEN, ISS_BLACK);
         display.printf("Lon:  %10.06f  \n", g_longitude);
     }
-    Log.info("%s: Lat: %f, Lon: %f", __FUNCTION__, g_latitude, g_longitude);
+//    Log.info("%s: Lat: %f, Lon: %f", __FUNCTION__, g_latitude, g_longitude);
 }
 
 bool detect_motion()
@@ -489,6 +494,68 @@ int web_set_proximity_distance(String p)
         g_proximity = distance;
     }
     return g_proximity;
+}
+
+int web_set_brightness(String p)
+{
+    int bright = p.toInt();
+    if (bright > 0 && bright < 256) {
+        leds.setBrightness(bright);
+    }
+    if (bright == -1) {
+        leds.clear();
+    }
+    leds.show();
+    return bright;
+}
+
+int web_set_color(String p)
+{
+    if (p == "white") {
+        set_led_color(0xFFFFFF);
+        return 0xFFFFFF;
+    }
+    if (p == "red") {
+        set_led_color(0xFF0000);
+        return 0xFF0000;
+    }
+    if (p == "blue") {
+        set_led_color(0x0000FF);
+        return 0x0000ff;
+    }
+    if (p == "green") {
+        set_led_color(0x00FF00);
+        return 0x00ff00;
+    }
+    if (p == "yellow") {
+        set_led_color(0x00FFFF);
+        return 0x00ffff;
+    }
+    return -1;
+}
+
+void set_led_brightness(uint8_t bright)
+{
+    leds.setBrightness(bright);
+}
+
+void set_led_color(uint32_t color)
+{
+    for (int i = 0; i < NUMPIXELS; i++) {
+        leds.setPixelColor(i, color);
+    }
+
+    leds.show();
+}
+
+void set_led_color(uint8_t bright, uint32_t color)
+{
+    for (int i = 0; i < NUMPIXELS; i++) {
+        leds.setPixelColor(i, color);
+    }
+    leds.setBrightness(bright);
+
+    leds.show();
 }
 
 void print_reset_reason()
@@ -603,6 +670,8 @@ void setup()
     Particle.function("offset", web_set_incline_offset);
     Particle.function("disptimeout", web_set_display_timeout);
     Particle.function("proximity", web_set_proximity_distance);
+    Particle.function("color", web_set_color);
+    Particle.function("brightness", web_set_brightness);
     Particle.variable("version", g_appId);
     Particle.variable("inc_cal", g_incOffset);
     Particle.variable("declination", g_declinationPosition);
@@ -621,6 +690,10 @@ void setup()
     print_reset_reason();
     issUpdate.start();
 
+    leds.begin();
+
+    set_led_color(100, 0xffffff);
+
     Log.info("%s: Done with setup for app id %d", __FUNCTION__, g_appId);
     display.printf("Setup ver %d\n", g_appId);
     delay(3000);
@@ -632,7 +705,6 @@ void loop()
     static int lastHour = 24;
 
     if (g_runLocationQuery) {
-        Log.info("%s: Getting location data", __FUNCTION__);
         Particle.publish("iss_location", PRIVATE);
         g_runLocationQuery = false;
     }
