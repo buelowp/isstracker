@@ -2,7 +2,7 @@
 #include "Adafruit_SSD1351_Photon.h"
 #include "dotstar.h"
 
-#define APP_ID              47
+#define APP_ID              48
 
 #define cs                  A5
 #define rst                 A3
@@ -33,6 +33,7 @@
 
 #define ONE_SECOND          1000
 #define TEN_SECONDS         (ONE_SECOND * 10)
+#define TWENTY_SECONDS      (ONE_SECOND * 20)
 #define ONE_MINUTE          (ONE_SECOND * 60)
 #define TEN_MINUTES         (ONE_MINUTE * 10)
 #define THIRTY_MINUTES      (ONE_MINUTE * 30)
@@ -45,6 +46,14 @@
 #define ISS_MAGENTA         0xF81F
 #define ISS_YELLOW          0xFFE0  
 #define ISS_WHITE           0xFFFF
+
+#define LUMEN_WHITE           0
+#define LUMEN_RED             1
+#define LUMEN_GREEN           2
+#define LUMEN_BLUE            3
+#define LUMEN_YELLOW          4
+#define LUMEN_CYAN            5
+#define LUMEN_PURPLE          6
 
 #define NUMPIXELS           6
 
@@ -76,10 +85,13 @@ bool g_motorDecCalibrated;
 bool g_motorHome;
 bool g_inclineHome;
 bool g_displayEnabled;
+bool g_cycleColors;
 String g_version = System.version() + "." + APP_ID;
 
 Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
-Adafruit_DotStar leds = Adafruit_DotStar(NUMPIXELS, LED_DO, LED_CO);
+Adafruit_DotStar leds = Adafruit_DotStar(NUMPIXELS, LED_DO, LED_CO, DOTSTAR_BGR);
+
+uint32_t Colors[] = { 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0x800080 };
 
 void set_motor_sleep(bool slp)
 {
@@ -440,7 +452,6 @@ int web_set_display_timeout(String p)
 void display_update()
 {
     if (!g_displayEnabled) {
-        display.println("ERROR");
         return;
     }
 
@@ -449,22 +460,22 @@ void display_update()
     display.setTextColor(ISS_WHITE, ISS_BLACK);
     display.printf("Version: %s\n\n", g_version.c_str());
     display.setTextColor(ISS_CYAN, ISS_BLACK);
-    display.printf("ISS Location\n");
+    display.printf("ISS Location\n\n");
     if (g_latitude < 0) {
-        display.setTextColor(ISS_RED, ISS_BLACK);
+        display.setTextColor(ISS_BLUE, ISS_BLACK);
         display.printf("Lat: %10.06f  \n", g_latitude);
     }
     else {
         display.setTextColor(ISS_GREEN, ISS_BLACK);
-        display.printf("Lat:  %10.06f  \n", g_latitude);
+        display.printf("Lat: %10.06f  \n", g_latitude);
     }
     if (g_longitude < 0) {
-        display.setTextColor(ISS_RED, ISS_BLACK);
+        display.setTextColor(ISS_BLUE, ISS_BLACK);
         display.printf("Lon: %10.06f  \n", g_longitude);
     }
     else {
         display.setTextColor(ISS_GREEN, ISS_BLACK);
-        display.printf("Lon:  %10.06f  \n", g_longitude);
+        display.printf("Lon: %10.06f  \n", g_longitude);
     }
 //    Log.info("%s: Lat: %f, Lon: %f", __FUNCTION__, g_latitude, g_longitude);
 }
@@ -511,27 +522,71 @@ int web_set_brightness(String p)
 
 int web_set_color(String p)
 {
+    g_cycleColors = false;
+
     if (p == "white") {
-        set_led_color(0xFFFFFF);
-        return 0xFFFFFF;
+        set_led_color(Colors[LUMEN_WHITE]);
+        Log.info("%s: Setting leds to white", __FUNCTION__);
+        return Colors[LUMEN_WHITE];
     }
     if (p == "red") {
-        set_led_color(0xFF0000);
-        return 0xFF0000;
+        set_led_color(Colors[LUMEN_RED]);
+        Log.info("%s: Setting leds to red", __FUNCTION__);
+        return Colors[LUMEN_RED];
     }
     if (p == "blue") {
-        set_led_color(0x0000FF);
-        return 0x0000ff;
+        set_led_color(Colors[LUMEN_BLUE]);
+        Log.info("%s: Setting leds to blue", __FUNCTION__);
+        return Colors[LUMEN_BLUE];
     }
     if (p == "green") {
-        set_led_color(0x00FF00);
-        return 0x00ff00;
+        set_led_color(Colors[LUMEN_GREEN]);
+        Log.info("%s: Setting leds to green", __FUNCTION__);
+        return Colors[LUMEN_GREEN];
     }
     if (p == "yellow") {
-        set_led_color(0x00FFFF);
-        return 0x00ffff;
+        set_led_color(Colors[LUMEN_YELLOW]);
+        Log.info("%s: Setting leds to yellow", __FUNCTION__);
+        return Colors[LUMEN_YELLOW];
     }
+    if (p == "cyan") {
+        set_led_color(Colors[LUMEN_CYAN]);
+        Log.info("%s: Setting leds to cyan", __FUNCTION__);
+        return Colors[LUMEN_CYAN];
+    }
+    if (p == "purple") {
+        set_led_color(Colors[LUMEN_PURPLE]);
+        Log.info("%s: Setting leds to purple", __FUNCTION__);
+        return Colors[LUMEN_PURPLE];
+    }
+    if (p == "cycle") {
+        g_cycleColors = true;
+        return 0xFFFFFF;
+    }
+    Log.info("%s: invalid color %s", __FUNCTION__, p.c_str());
     return -1;
+}
+
+void color_update()
+{
+    static system_tick_t cycle = 0;
+    static uint32_t color = 0;
+
+    if (g_cycleColors) {
+        if (millis() > (cycle)) {
+            set_led_color(Colors[color++]);
+            if (color > 6) {
+                color = 0;
+            }
+            cycle = millis() + TWENTY_SECONDS;
+        }
+    }
+    else {
+        if (cycle != 0) {
+            cycle = 0;
+            color = 0;
+        }
+    }
 }
 
 void set_led_brightness(uint8_t bright)
@@ -637,6 +692,7 @@ void setup()
     g_displayTimeout = ONE_MINUTE;
     g_displayTimeoutMillis = millis() + ONE_MINUTE;
     g_proximity = 60;
+    g_cycleColors = false;
 
     System.enableFeature(FEATURE_RESET_INFO);
 
@@ -656,7 +712,6 @@ void setup()
     pinMode(mtr_dir, OUTPUT);
     pinMode(DEC_CALIBRATION, INPUT);
     pinMode(DISTANCE, INPUT);
-
 
     g_lastResetReason = System.resetReason();
 
@@ -723,4 +778,5 @@ void loop()
     }
     detect_motion();
     display_update();
+    color_update();
 }
