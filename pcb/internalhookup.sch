@@ -3702,6 +3702,8 @@ JST PH 2-pin thru-home side entry</description>
 <part name="C2" library="SparkFun-Capacitors" library_urn="urn:adsk.eagle:library:510" deviceset="10UF-POLAR" device="-RADIAL-2.5MM-25V-20%" package3d_urn="urn:adsk.eagle:package:37423/1" value="10uF"/>
 <part name="J3" library="SparkFun-Connectors" library_urn="urn:adsk.eagle:library:513" deviceset="CONN_03" device="" package3d_urn="urn:adsk.eagle:package:38063/1" value="AZ_SENSOR"/>
 <part name="Q2" library="MMBT3904" deviceset="MMBT3904" device="" value="SMMBT2222ALT"/>
+<part name="Q1" library="MMBT3904" deviceset="MMBT3904" device="" value="SMMBT2222ALT"/>
+<part name="R2" library="SparkFun-Resistors" library_urn="urn:adsk.eagle:library:532" deviceset="0.3OHM" device="-0805-1/8W-1%" package3d_urn="urn:adsk.eagle:package:39651/1" value="1k"/>
 </parts>
 <sheets>
 <sheet>
@@ -3746,6 +3748,14 @@ JST PH 2-pin thru-home side entry</description>
 <attribute name="NAME" x="58.42" y="73.663840625" size="1.779340625" layer="95" rot="R90"/>
 <attribute name="VALUE" x="53.34501875" y="66.050040625" size="1.781509375" layer="96" rot="R90"/>
 </instance>
+<instance part="Q1" gate="G$1" x="60.96" y="129.54" smashed="yes">
+<attribute name="NAME" x="58.42" y="132.083840625" size="1.779340625" layer="95" rot="R90"/>
+<attribute name="VALUE" x="68.58501875" y="119.390040625" size="1.781509375" layer="96" rot="R90"/>
+</instance>
+<instance part="R2" gate="G$1" x="45.72" y="129.54" smashed="yes">
+<attribute name="NAME" x="45.72" y="131.064" size="1.778" layer="95" font="vector" align="bottom-center"/>
+<attribute name="VALUE" x="45.72" y="128.016" size="1.778" layer="96" font="vector" align="top-center"/>
+</instance>
 </instances>
 <busses>
 </busses>
@@ -3767,16 +3777,6 @@ JST PH 2-pin thru-home side entry</description>
 <junction x="198.12" y="88.9"/>
 </segment>
 <segment>
-<wire x1="172.72" y1="180.34" x2="172.72" y2="167.64" width="0.1524" layer="91"/>
-<label x="172.72" y="167.64" size="1.016" layer="95" rot="R270" xref="yes"/>
-<pinref part="CN1" gate="G$1" pin="1"/>
-</segment>
-<segment>
-<wire x1="55.88" y1="185.42" x2="76.2" y2="185.42" width="0.1524" layer="91"/>
-<label x="76.2" y="185.42" size="1.016" layer="95" xref="yes"/>
-<pinref part="J1" gate="G$1" pin="5"/>
-</segment>
-<segment>
 <wire x1="55.88" y1="187.96" x2="76.2" y2="187.96" width="0.1524" layer="91"/>
 <label x="76.2" y="187.96" size="1.016" layer="95" xref="yes"/>
 <pinref part="J1" gate="G$1" pin="6"/>
@@ -3785,6 +3785,11 @@ JST PH 2-pin thru-home side entry</description>
 <pinref part="J3" gate="J$1" pin="2"/>
 <wire x1="198.12" y1="172.72" x2="198.12" y2="162.56" width="0.1524" layer="91"/>
 <label x="198.12" y="162.56" size="1.016" layer="95" rot="R270" xref="yes"/>
+</segment>
+<segment>
+<pinref part="Q1" gate="G$1" pin="E"/>
+<wire x1="63.5" y1="121.92" x2="63.5" y2="114.3" width="0.1524" layer="91"/>
+<label x="63.5" y="114.3" size="1.016" layer="95" rot="R270" xref="yes"/>
 </segment>
 </net>
 <net name="+5V" class="0">
@@ -3804,14 +3809,14 @@ JST PH 2-pin thru-home side entry</description>
 <label x="66.04" y="66.04" size="1.016" layer="95" rot="R90" xref="yes"/>
 </segment>
 <segment>
-<wire x1="55.88" y1="180.34" x2="76.2" y2="180.34" width="0.1524" layer="91"/>
-<label x="76.2" y="180.34" size="1.016" layer="95" xref="yes"/>
-<pinref part="J1" gate="G$1" pin="3"/>
-</segment>
-<segment>
 <wire x1="55.88" y1="182.88" x2="76.2" y2="182.88" width="0.1524" layer="91"/>
 <label x="76.2" y="182.88" size="1.016" layer="95" xref="yes"/>
 <pinref part="J1" gate="G$1" pin="4"/>
+</segment>
+<segment>
+<wire x1="55.88" y1="185.42" x2="76.2" y2="185.42" width="0.1524" layer="91"/>
+<label x="76.2" y="185.42" size="1.016" layer="95" xref="yes"/>
+<pinref part="J1" gate="G$1" pin="5"/>
 </segment>
 </net>
 <net name="+3V3" class="0">
@@ -3870,6 +3875,37 @@ JST PH 2-pin thru-home side entry</description>
 <pinref part="J3" gate="J$1" pin="3"/>
 <wire x1="200.66" y1="172.72" x2="200.66" y2="162.56" width="0.1524" layer="91"/>
 <label x="200.66" y="162.56" size="1.016" layer="95" rot="R270" xref="yes"/>
+</segment>
+</net>
+<net name="LASER" class="0">
+<segment>
+<wire x1="55.88" y1="180.34" x2="76.2" y2="180.34" width="0.1524" layer="91"/>
+<label x="76.2" y="180.34" size="1.016" layer="95" xref="yes"/>
+<pinref part="J1" gate="G$1" pin="3"/>
+</segment>
+<segment>
+<pinref part="R2" gate="G$1" pin="1"/>
+<wire x1="40.64" y1="129.54" x2="33.02" y2="129.54" width="0.1524" layer="91"/>
+<label x="33.02" y="129.54" size="1.016" layer="95" rot="R180" xref="yes"/>
+</segment>
+</net>
+<net name="N$3" class="0">
+<segment>
+<pinref part="Q1" gate="G$1" pin="B"/>
+<pinref part="R2" gate="G$1" pin="2"/>
+<wire x1="55.88" y1="129.54" x2="50.8" y2="129.54" width="0.1524" layer="91"/>
+</segment>
+</net>
+<net name="LSR_GND" class="0">
+<segment>
+<pinref part="Q1" gate="G$1" pin="C"/>
+<wire x1="63.5" y1="137.16" x2="63.5" y2="144.78" width="0.1524" layer="91"/>
+<label x="63.5" y="144.78" size="1.016" layer="95" rot="R90" xref="yes"/>
+</segment>
+<segment>
+<wire x1="172.72" y1="180.34" x2="172.72" y2="167.64" width="0.1524" layer="91"/>
+<label x="172.72" y="167.64" size="1.016" layer="95" rot="R270" xref="yes"/>
+<pinref part="CN1" gate="G$1" pin="1"/>
 </segment>
 </net>
 </nets>
