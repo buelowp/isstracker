@@ -2,12 +2,13 @@
 #include "Adafruit_SSD1351_Photon.h"
 #include "dotstar.h"
 
-#define APP_ID              48
+#define APP_ID              49
 
 #define cs                  A5
 #define rst                 A3
 #define dc                  A4
 
+#define LASER               A0
 #define DEC_CALIBRATION     A1
 #define DISTANCE            A2
 
@@ -32,9 +33,11 @@
 #define INC_CAL_ADDRESS     0
 
 #define ONE_SECOND          1000
+#define FIVE_SECONDS        (ONE_SECOND * 5)
 #define TEN_SECONDS         (ONE_SECOND * 10)
 #define TWENTY_SECONDS      (ONE_SECOND * 20)
 #define ONE_MINUTE          (ONE_SECOND * 60)
+#define FIVE_MINUTES        (ONE_MINUTE * 5)
 #define TEN_MINUTES         (ONE_MINUTE * 10)
 #define THIRTY_MINUTES      (ONE_MINUTE * 30)
 
@@ -78,6 +81,8 @@ int g_displayTimeout;
 int g_distance;
 int g_proximity;
 system_tick_t g_displayTimeoutMillis;
+system_tick_t g_dutyCycleTimeout;
+system_tick_t g_dutyCycleRestart;
 bool g_querySuccess;
 bool g_runLocationQuery;
 bool g_inCalibration;
@@ -86,6 +91,7 @@ bool g_motorHome;
 bool g_inclineHome;
 bool g_displayEnabled;
 bool g_cycleColors;
+bool g_disableLaser;
 String g_version = System.version() + "." + APP_ID;
 
 Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
@@ -567,6 +573,53 @@ int web_set_color(String p)
     return -1;
 }
 
+int web_switch_laser(String p)
+{
+    if (p == "disable" || p == "disabled")
+        g_disableLaser = true;
+
+    return toggle_laser();
+}
+
+int toggle_laser()
+{
+    if (g_disableLaser) {
+        digitalWrite(LASER, LOW);
+        Log.info("%s: Laser is dsiabled, turning off", __FUNCTION__);
+        return -1;
+    }
+
+    if (digitalRead(LASER) == LOW) {
+        digitalWrite(LASER, HIGH);
+        Log.info("%s: Turning laser ON", __FUNCTION__);
+        g_dutyCycleTimeout = millis() + FIVE_MINUTES;
+        g_dutyCycleRestart = 0;
+        return 1;
+    }
+
+    digitalWrite(LASER, LOW);
+    g_dutyCycleRestart = millis() + FIVE_SECONDS;
+    Log.info("%s: Turning laser OFF for duty cycle", __FUNCTION__);
+    return 0;
+}
+
+void laser_duty_cycle()
+{
+    if (g_dutyCycleTimeout < millis() && g_dutyCycleTimeout != 0) {
+        Log.info("%s: duty cycle timeout, %ld:%ld", __FUNCTION__, millis(), g_dutyCycleTimeout);
+        toggle_laser();
+        g_dutyCycleRestart = millis() + FIVE_SECONDS;
+        g_dutyCycleTimeout = 0;
+    }
+        
+    if (g_dutyCycleRestart < millis() && g_dutyCycleRestart != 0) {
+        Log.info("%s: restart cycle timeout, %ld:%ld", __FUNCTION__, millis(), g_dutyCycleRestart);
+        toggle_laser();
+        g_dutyCycleTimeout = millis() + FIVE_MINUTES;
+        g_dutyCycleRestart = 0;
+    }
+}
+
 void color_update()
 {
     static system_tick_t cycle = 0;
@@ -712,6 +765,7 @@ void setup()
     pinMode(mtr_dir, OUTPUT);
     pinMode(DEC_CALIBRATION, INPUT);
     pinMode(DISTANCE, INPUT);
+    pinMode(LASER, OUTPUT);
 
     g_lastResetReason = System.resetReason();
 
@@ -727,12 +781,15 @@ void setup()
     Particle.function("proximity", web_set_proximity_distance);
     Particle.function("color", web_set_color);
     Particle.function("brightness", web_set_brightness);
+    Particle.function("Laser", web_switch_laser);
     Particle.variable("version", g_appId);
     Particle.variable("inc_cal", g_incOffset);
     Particle.variable("declination", g_declinationPosition);
     Particle.variable("reset", g_lastResetReason);
     Particle.variable("distance", g_distance);
 
+    digitalWrite(LASER, LOW);
+    display.printf("Laser Turned Off");
     display.printf("Cloud complete\n");
     display.printf("Motor Cal...");
     reset_motor();
@@ -779,4 +836,5 @@ void loop()
     detect_motion();
     display_update();
     color_update();
+//    laser_duty_cycle();
 }
