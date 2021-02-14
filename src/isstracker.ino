@@ -2,14 +2,13 @@
 #include "Adafruit_SSD1351_Photon.h"
 #include "dotstar.h"
 
-#define APP_ID              49
+#define APP_ID              50
 
 #define cs                  A5
 #define rst                 A3
 #define dc                  A4
 
-#define LASER               A0
-#define DEC_CALIBRATION     A1
+#define AZIMUTH             D7
 #define DISTANCE            A2
 
 #define mtr_ms2             D0
@@ -19,8 +18,6 @@
 #define mtr_ms1             D4
 #define mtr_slp             D5
 #define SERVO               D6
-#define LED_DO              D8
-#define LED_CO              D7
 
 #define FULL_STEP           1
 #define HALF_STEP           2
@@ -58,8 +55,6 @@
 #define LUMEN_CYAN            5
 #define LUMEN_PURPLE          6
 
-#define NUMPIXELS           6
-
 Timer issUpdate(5000, run_location_update);
 SerialLogHandler logHandler;
 Serial1LogHandler logHandler2(115200);
@@ -95,9 +90,6 @@ bool g_disableLaser;
 String g_version = System.version() + "." + APP_ID;
 
 Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
-Adafruit_DotStar leds = Adafruit_DotStar(NUMPIXELS, LED_DO, LED_CO, DOTSTAR_BGR);
-
-uint32_t Colors[] = { 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0x800080 };
 
 void set_motor_sleep(bool slp)
 {
@@ -124,7 +116,7 @@ void set_motor_home()
     // the leading edge of the sensor to be consistent
     Log.info("%s: Moving motor away from sensor...", __FUNCTION__);
     set_motor_dir(CLOCKWISE);
-    if (digitalRead(DEC_CALIBRATION) == LOW) {
+    if (digitalRead(AZIMUTH) == LOW) {
         for (int i = 0; i < 50; i++) {
             digitalWrite(mtr_step, HIGH);
             delay(1);
@@ -141,7 +133,7 @@ void set_motor_home()
         delay(1);
         digitalWrite(mtr_step, LOW);
         delay(200);
-        if (digitalRead(DEC_CALIBRATION) == LOW) {
+        if (digitalRead(AZIMUTH) == LOW) {
             break;
         }
         Particle.process();
@@ -513,159 +505,6 @@ int web_set_proximity_distance(String p)
     return g_proximity;
 }
 
-int web_set_brightness(String p)
-{
-    int bright = p.toInt();
-    if (bright > 0 && bright < 256) {
-        leds.setBrightness(bright);
-    }
-    if (bright == -1) {
-        leds.clear();
-    }
-    leds.show();
-    return bright;
-}
-
-int web_set_color(String p)
-{
-    g_cycleColors = false;
-
-    if (p == "white") {
-        set_led_color(Colors[LUMEN_WHITE]);
-        Log.info("%s: Setting leds to white", __FUNCTION__);
-        return Colors[LUMEN_WHITE];
-    }
-    if (p == "red") {
-        set_led_color(Colors[LUMEN_RED]);
-        Log.info("%s: Setting leds to red", __FUNCTION__);
-        return Colors[LUMEN_RED];
-    }
-    if (p == "blue") {
-        set_led_color(Colors[LUMEN_BLUE]);
-        Log.info("%s: Setting leds to blue", __FUNCTION__);
-        return Colors[LUMEN_BLUE];
-    }
-    if (p == "green") {
-        set_led_color(Colors[LUMEN_GREEN]);
-        Log.info("%s: Setting leds to green", __FUNCTION__);
-        return Colors[LUMEN_GREEN];
-    }
-    if (p == "yellow") {
-        set_led_color(Colors[LUMEN_YELLOW]);
-        Log.info("%s: Setting leds to yellow", __FUNCTION__);
-        return Colors[LUMEN_YELLOW];
-    }
-    if (p == "cyan") {
-        set_led_color(Colors[LUMEN_CYAN]);
-        Log.info("%s: Setting leds to cyan", __FUNCTION__);
-        return Colors[LUMEN_CYAN];
-    }
-    if (p == "purple") {
-        set_led_color(Colors[LUMEN_PURPLE]);
-        Log.info("%s: Setting leds to purple", __FUNCTION__);
-        return Colors[LUMEN_PURPLE];
-    }
-    if (p == "cycle") {
-        g_cycleColors = true;
-        return 0xFFFFFF;
-    }
-    Log.info("%s: invalid color %s", __FUNCTION__, p.c_str());
-    return -1;
-}
-
-int web_switch_laser(String p)
-{
-    if (p == "disable" || p == "disabled")
-        g_disableLaser = true;
-
-    return toggle_laser();
-}
-
-int toggle_laser()
-{
-    if (g_disableLaser) {
-        digitalWrite(LASER, LOW);
-        Log.info("%s: Laser is dsiabled, turning off", __FUNCTION__);
-        return -1;
-    }
-
-    if (digitalRead(LASER) == LOW) {
-        digitalWrite(LASER, HIGH);
-        Log.info("%s: Turning laser ON", __FUNCTION__);
-        g_dutyCycleTimeout = millis() + FIVE_MINUTES;
-        g_dutyCycleRestart = 0;
-        return 1;
-    }
-
-    digitalWrite(LASER, LOW);
-    g_dutyCycleRestart = millis() + FIVE_SECONDS;
-    Log.info("%s: Turning laser OFF for duty cycle", __FUNCTION__);
-    return 0;
-}
-
-void laser_duty_cycle()
-{
-    if (g_dutyCycleTimeout < millis() && g_dutyCycleTimeout != 0) {
-        Log.info("%s: duty cycle timeout, %ld:%ld", __FUNCTION__, millis(), g_dutyCycleTimeout);
-        toggle_laser();
-        g_dutyCycleRestart = millis() + FIVE_SECONDS;
-        g_dutyCycleTimeout = 0;
-    }
-        
-    if (g_dutyCycleRestart < millis() && g_dutyCycleRestart != 0) {
-        Log.info("%s: restart cycle timeout, %ld:%ld", __FUNCTION__, millis(), g_dutyCycleRestart);
-        toggle_laser();
-        g_dutyCycleTimeout = millis() + FIVE_MINUTES;
-        g_dutyCycleRestart = 0;
-    }
-}
-
-void color_update()
-{
-    static system_tick_t cycle = 0;
-    static uint32_t color = 0;
-
-    if (g_cycleColors) {
-        if (millis() > (cycle)) {
-            set_led_color(Colors[color++]);
-            if (color > 6) {
-                color = 0;
-            }
-            cycle = millis() + TWENTY_SECONDS;
-        }
-    }
-    else {
-        if (cycle != 0) {
-            cycle = 0;
-            color = 0;
-        }
-    }
-}
-
-void set_led_brightness(uint8_t bright)
-{
-    leds.setBrightness(bright);
-}
-
-void set_led_color(uint32_t color)
-{
-    for (int i = 0; i < NUMPIXELS; i++) {
-        leds.setPixelColor(i, color);
-    }
-
-    leds.show();
-}
-
-void set_led_color(uint8_t bright, uint32_t color)
-{
-    for (int i = 0; i < NUMPIXELS; i++) {
-        leds.setPixelColor(i, color);
-    }
-    leds.setBrightness(bright);
-
-    leds.show();
-}
-
 void print_reset_reason()
 {
     switch (System.resetReason()) {
@@ -763,10 +602,9 @@ void setup()
     pinMode(mtr_en, OUTPUT);
     pinMode(mtr_step, OUTPUT);
     pinMode(mtr_dir, OUTPUT);
-    pinMode(DEC_CALIBRATION, INPUT);
+    pinMode(AZIMUTH, INPUT);
     pinMode(DISTANCE, INPUT);
-    pinMode(LASER, OUTPUT);
-
+ 
     g_lastResetReason = System.resetReason();
 
     servo.attach(SERVO);
@@ -779,17 +617,12 @@ void setup()
     Particle.function("offset", web_set_incline_offset);
     Particle.function("disptimeout", web_set_display_timeout);
     Particle.function("proximity", web_set_proximity_distance);
-    Particle.function("color", web_set_color);
-    Particle.function("brightness", web_set_brightness);
-    Particle.function("Laser", web_switch_laser);
     Particle.variable("version", g_appId);
     Particle.variable("inc_cal", g_incOffset);
     Particle.variable("declination", g_declinationPosition);
     Particle.variable("reset", g_lastResetReason);
     Particle.variable("distance", g_distance);
 
-    digitalWrite(LASER, LOW);
-    display.printf("Laser Turned Off");
     display.printf("Cloud complete\n");
     display.printf("Motor Cal...");
     reset_motor();
@@ -801,10 +634,6 @@ void setup()
 
     print_reset_reason();
     issUpdate.start();
-
-    leds.begin();
-
-    set_led_color(100, 0xffffff);
 
     Log.info("%s: Done with setup for app id %d", __FUNCTION__, g_appId);
     display.printf("Setup ver %d\n", g_appId);
@@ -835,6 +664,4 @@ void loop()
     }
     detect_motion();
     display_update();
-    color_update();
-//    laser_duty_cycle();
 }
