@@ -64,9 +64,11 @@ int g_servoAngle;
 int g_motorDirection;
 int g_lastResetReason;
 int g_displayTimeout;
+int g_globeTimeout;
 int g_distance;
 int g_proximity;
 system_tick_t g_displayTimeoutMillis;
+system_tick_t g_globeTimeoutMillis;
 system_tick_t g_dutyCycleTimeout;
 system_tick_t g_dutyCycleRestart;
 bool g_querySuccess;
@@ -77,7 +79,7 @@ bool g_motorHome;
 bool g_inclineHome;
 bool g_displayEnabled;
 bool g_cycleColors;
-bool g_disableLaser;
+bool g_globeEnabled;
 String g_version = System.version() + "." + APP_ID;
 
 Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
@@ -307,14 +309,13 @@ void set_inclination()
 {
     static int lastAngle = 200;
 
-    if (!g_displayEnabled)
-        return;
-
     if (g_inCalibration)
         return;
 
     if (lastAngle != g_servoAngle) {
-        servo.write(g_servoAngle);
+        if (g_globeEnabled)
+            servo.write(g_servoAngle);
+            
         lastAngle = g_servoAngle;
     }
     Log.info("%s: Inclination set to %d", __FUNCTION__, g_servoAngle);
@@ -476,17 +477,24 @@ void display_update()
 bool detect_motion()
 {
     if (digitalRead(DISTANCE) == HIGH) {
-        digitalWrite(GLOBE_POWER, HIGH);
         if (g_displayTimeoutMillis < millis()) {
             g_displayEnabled = true;
             g_displayTimeoutMillis = millis() + g_displayTimeout;
             return true;
+        }
+        if (g_globeTimeoutMillis < millis()) {
+            g_globeEnabled = true;
+            g_globeTimeoutMillis = millis() + g_globeTimeout;
+            digitalWrite(GLOBE_POWER, HIGH);
         }
     }
     else {
         if (g_displayTimeoutMillis < millis()) {
             g_displayEnabled = false;
             display.fillScreen(0);
+        }
+        if (g_globeTimeoutMillis < millis()) {
+            g_globeEnabled = false;
             digitalWrite(GLOBE_POWER, LOW);
         }
     }
@@ -579,7 +587,9 @@ void setup()
     g_servoAngle = 90;
     g_displayEnabled = true;
     g_displayTimeout = ONE_MINUTE;
+    g_globeTimeout = FIVE_MINUTES;
     g_displayTimeoutMillis = millis() + ONE_MINUTE;
+    g_globeTimeoutMillis = millis() + FIVE_MINUTES;
     g_proximity = 60;
     g_cycleColors = false;
 
