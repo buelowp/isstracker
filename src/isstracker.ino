@@ -1,14 +1,11 @@
 #include "Adafruit_mfGFX.h"
 #include "Adafruit_SSD1351_Photon.h"
-#include "dotstar.h"
 
-#define APP_ID              50
+#define APP_ID              51
 
 #define cs                  A5
 #define rst                 A3
 #define dc                  A4
-
-#define AZIMUTH             D7
 #define DISTANCE            A2
 
 #define mtr_ms2             D0
@@ -18,6 +15,8 @@
 #define mtr_ms1             D4
 #define mtr_slp             D5
 #define SERVO               D6
+#define AZIMUTH             D7
+#define GLOBE_POWER         D8
 
 #define FULL_STEP           1
 #define HALF_STEP           2
@@ -38,22 +37,14 @@
 #define TEN_MINUTES         (ONE_MINUTE * 10)
 #define THIRTY_MINUTES      (ONE_MINUTE * 30)
 
-#define	ISS_BLACK           0x0000
-#define	ISS_BLUE            0x001F
-#define	ISS_RED             0xF800
-#define	ISS_GREEN           0x07E0
+#define ISS_BLACK           0x0000
+#define ISS_BLUE            0x001F
+#define ISS_RED             0xF800
+#define ISS_GREEN           0x07E0
 #define ISS_CYAN            0x07FF
 #define ISS_MAGENTA         0xF81F
 #define ISS_YELLOW          0xFFE0  
 #define ISS_WHITE           0xFFFF
-
-#define LUMEN_WHITE           0
-#define LUMEN_RED             1
-#define LUMEN_GREEN           2
-#define LUMEN_BLUE            3
-#define LUMEN_YELLOW          4
-#define LUMEN_CYAN            5
-#define LUMEN_PURPLE          6
 
 Timer issUpdate(5000, run_location_update);
 SerialLogHandler logHandler;
@@ -316,6 +307,9 @@ void set_inclination()
 {
     static int lastAngle = 200;
 
+    if (!g_displayEnabled)
+        return;
+
     if (g_inCalibration)
         return;
 
@@ -344,8 +338,9 @@ void set_declination()
 }
 
 int web_calibrate(String p)
-{
+{    
     if (p.toInt() != 0) {
+        digitalWrite(GLOBE_POWER, HIGH);
         g_inCalibration = true;
         Log.info("%s: starting calibration", __FUNCTION__);
     }
@@ -481,6 +476,7 @@ void display_update()
 bool detect_motion()
 {
     if (digitalRead(DISTANCE) == HIGH) {
+        digitalWrite(GLOBE_POWER, HIGH);
         if (g_displayTimeoutMillis < millis()) {
             g_displayEnabled = true;
             g_displayTimeoutMillis = millis() + g_displayTimeout;
@@ -491,6 +487,7 @@ bool detect_motion()
         if (g_displayTimeoutMillis < millis()) {
             g_displayEnabled = false;
             display.fillScreen(0);
+            digitalWrite(GLOBE_POWER, LOW);
         }
     }
     return false;
@@ -604,10 +601,10 @@ void setup()
     pinMode(mtr_dir, OUTPUT);
     pinMode(AZIMUTH, INPUT);
     pinMode(DISTANCE, INPUT);
+    pinMode(GLOBE_POWER, OUTPUT);
  
     g_lastResetReason = System.resetReason();
 
-    servo.attach(SERVO);
     Particle.subscribe("hook-response/iss_location", iss_location, MY_DEVICES);
     Particle.function("calibrate", web_calibrate);
     Particle.function("clockwise", web_rotate_clockwise);
@@ -628,6 +625,11 @@ void setup()
     reset_motor();
     set_motor_step_resolution(QUARTER_STEP);        // 800 steps per revolution, .45 deg per step
     set_motor_dir(CCLOCKWISE);
+    display.printf("Enabling globe...\n");
+    digitalWrite(GLOBE_POWER, HIGH);
+    delay(10);
+    display.printf("Starting servo...\n");
+    servo.attach(SERVO);
     g_servoAngle = 90;
     servo.write(g_servoAngle);
     display.printf("Done!\n");
