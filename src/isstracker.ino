@@ -56,7 +56,7 @@ double g_latitude;
 int g_lon;
 int g_lat;
 int g_appId;
-int g_declinationPosition;
+int g_azimuthPosition;
 int g_incOffset;
 int g_currentResolution;
 int g_motorAngle;
@@ -80,6 +80,7 @@ bool g_inclineHome;
 bool g_displayEnabled;
 bool g_cycleColors;
 bool g_globeEnabled;
+bool g_globePowerControl;
 String g_version = System.version() + "." + APP_ID;
 
 Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
@@ -132,7 +133,7 @@ void set_motor_home()
         Particle.process();
     }
     set_motor_sleep(true);
-    g_declinationPosition = 0;
+    g_azimuthPosition = 0;
     g_motorHome = true;
 }
 
@@ -216,10 +217,10 @@ void set_motor_position(int angle)
 {
     g_motorAngle = angle;
 
-    if ((g_declinationPosition == g_currentResolution - 1) && angle >= 0) {
-        g_declinationPosition = -1;
+    if ((g_azimuthPosition == g_currentResolution - 1) && angle >= 0) {
+        g_azimuthPosition = -1;
     }
-    int steps = angle - g_declinationPosition;
+    int steps = angle - g_azimuthPosition;
     if (steps > 0) {
         set_motor_sleep(false);
         Log.info("%s: Moving motor %d steps", __FUNCTION__, steps);
@@ -230,7 +231,7 @@ void set_motor_position(int angle)
         delay(1);
         digitalWrite(mtr_step, LOW); //Pull step pin low so it can be triggered again
         delay(1);
-        g_declinationPosition++;
+        g_azimuthPosition++;
     }
 
     if (steps > 0)
@@ -269,8 +270,8 @@ void iss_location(const char *event, const char *data)
 
     if (g_querySuccess) {
         set_inclination();
-        set_declination();
-        Log.info("%s: %f, %f, inclination %d, declination %d, motor position %d", __FUNCTION__, g_latitude, g_longitude, g_servoAngle, g_motorAngle, g_declinationPosition);
+        set_azimuth();
+        Log.info("%s: %f, %f, inclination %d, azimuth %d, motor position %d", __FUNCTION__, g_latitude, g_longitude, g_servoAngle, g_motorAngle, g_azimuthPosition);
     }
     else {
         Log.info("JSON did not work right");
@@ -315,13 +316,13 @@ void set_inclination()
     if (lastAngle != g_servoAngle) {
         if (g_globeEnabled)
             servo.write(g_servoAngle);
-            
+
         lastAngle = g_servoAngle;
     }
     Log.info("%s: Inclination set to %d", __FUNCTION__, g_servoAngle);
 }
 
-void set_declination()
+void set_azimuth()
 {  
     int angle = 0;
     int degrees = 0;
@@ -362,7 +363,7 @@ int web_rotate_clockwise(String p)
         return -1;
 
     if (steps >= 0 && steps < 360) {
-        Log.info("%s: Moving declination motor %d steps clockwise", __FUNCTION__, steps);
+        Log.info("%s: Moving azimuth motor %d steps clockwise", __FUNCTION__, steps);
         set_motor_dir(CLOCKWISE);
         set_motor_position(steps);
         return steps;
@@ -380,7 +381,7 @@ int web_rotate_cclockwise(String p)
         return -1;
 
     if (steps > 0 && steps < 180) {
-        Log.info("%s: Moving declination motor %d steps counter clockwise", __FUNCTION__, steps);
+        Log.info("%s: Moving azimuth motor %d steps counter clockwise", __FUNCTION__, steps);
         set_motor_dir(CCLOCKWISE);
         set_motor_position(steps);
         return steps;
@@ -482,7 +483,7 @@ bool detect_motion()
             g_displayTimeoutMillis = millis() + g_displayTimeout;
             return true;
         }
-        if (g_globeTimeoutMillis < millis()) {
+        if (g_globeTimeoutMillis < millis() && g_globePowerControl) {
             g_globeEnabled = true;
             g_globeTimeoutMillis = millis() + g_globeTimeout;
             digitalWrite(GLOBE_POWER, HIGH);
@@ -493,7 +494,7 @@ bool detect_motion()
             g_displayEnabled = false;
             display.fillScreen(0);
         }
-        if (g_globeTimeoutMillis < millis()) {
+        if (g_globeTimeoutMillis < millis() && g_globePowerControl) {
             g_globeEnabled = false;
             digitalWrite(GLOBE_POWER, LOW);
         }
@@ -508,6 +509,18 @@ int web_set_proximity_distance(String p)
         g_proximity = distance;
     }
     return g_proximity;
+}
+
+int web_set_globe_power_ctl(String p)
+{
+    int flag = p.toInt();
+    if (flag) {
+        g_globePowerControl = true;
+        return 1;
+    }
+
+    g_globePowerControl = false;
+    return 0;
 }
 
 void print_reset_reason()
@@ -579,7 +592,7 @@ void setup()
     g_inCalibration = false;
     g_motorDecCalibrated = true;
     g_incOffset = 0;
-    g_declinationPosition = 0;
+    g_azimuthPosition = 0;
     g_appId = APP_ID;
     g_currentResolution = 800;
     g_motorHome = false;
@@ -592,6 +605,7 @@ void setup()
     g_globeTimeoutMillis = millis() + FIVE_MINUTES;
     g_proximity = 60;
     g_cycleColors = false;
+    g_globePowerControl = false;
 
     System.enableFeature(FEATURE_RESET_INFO);
 
@@ -624,9 +638,10 @@ void setup()
     Particle.function("offset", web_set_incline_offset);
     Particle.function("disptimeout", web_set_display_timeout);
     Particle.function("proximity", web_set_proximity_distance);
+    Particle.function("globepower", web_set_globe_power_ctl);
     Particle.variable("version", g_appId);
     Particle.variable("inc_cal", g_incOffset);
-    Particle.variable("declination", g_declinationPosition);
+    Particle.variable("azimuth", g_azimuthPosition);
     Particle.variable("reset", g_lastResetReason);
     Particle.variable("distance", g_distance);
 
