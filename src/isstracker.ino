@@ -1,7 +1,8 @@
 #include "Adafruit_mfGFX.h"
 #include "Adafruit_SSD1351_Photon.h"
 
-#define APP_ID              51
+#define APP_ID              53
+#define BOARD_REV_1_2       1
 
 #define cs                  A5
 #define rst                 A3
@@ -15,7 +16,12 @@
 #define mtr_ms1             D4
 #define mtr_slp             D5
 #define SERVO               D6
-#define AZIMUTH             D7
+#ifdef BOARD_REV_1_2
+  #define AZIMUTH           A1
+#else
+  #define AZIMUTH           D7
+#endif
+
 #define GLOBE_POWER         D8
 
 #define FULL_STEP           1
@@ -314,8 +320,7 @@ void set_inclination()
         return;
 
     if (lastAngle != g_servoAngle) {
-        if (g_globeEnabled)
-            servo.write(g_servoAngle);
+        servo.write(g_servoAngle);
 
         lastAngle = g_servoAngle;
     }
@@ -458,19 +463,19 @@ void display_update()
     display.printf("ISS Location\n\n");
     if (g_latitude < 0) {
         display.setTextColor(ISS_BLUE, ISS_BLACK);
-        display.printf("Lat: %10.06f  \n", g_latitude);
+        display.printf("Lat: %10.06f S  \n", g_latitude);
     }
     else {
         display.setTextColor(ISS_GREEN, ISS_BLACK);
-        display.printf("Lat: %10.06f  \n", g_latitude);
+        display.printf("Lat: %10.06f N \n", g_latitude);
     }
     if (g_longitude < 0) {
         display.setTextColor(ISS_BLUE, ISS_BLACK);
-        display.printf("Lon: %10.06f  \n", g_longitude);
+        display.printf("Lon: %10.06f W \n", g_longitude);
     }
     else {
         display.setTextColor(ISS_GREEN, ISS_BLACK);
-        display.printf("Lon: %10.06f  \n", g_longitude);
+        display.printf("Lon: %10.06f E \n", g_longitude);
     }
 //    Log.info("%s: Lat: %f, Lon: %f", __FUNCTION__, g_latitude, g_longitude);
 }
