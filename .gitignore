@@ -36,3 +36,4 @@ build/
 target/
 src/isstracker.cpp
 lib/
+.lock*
