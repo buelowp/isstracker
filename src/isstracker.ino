@@ -1,13 +1,14 @@
 #include "Adafruit_mfGFX.h"
 #include "Adafruit_SSD1351_Photon.h"
 
-#define APP_ID              53
-#define BOARD_REV_1_2       1
+#define APP_ID              54
+#define BOARD_REV_1_6       1
 
 #define cs                  A5
 #define rst                 A3
 #define dc                  A4
 #define DISTANCE            A2
+#define GLOBE_POWER         A1
 
 #define mtr_ms2             D0
 #define mtr_en              D1
@@ -16,13 +17,7 @@
 #define mtr_ms1             D4
 #define mtr_slp             D5
 #define SERVO               D6
-#ifdef BOARD_REV_1_2
-  #define AZIMUTH           A1
-#else
-  #define AZIMUTH           D7
-#endif
-
-#define GLOBE_POWER         D8
+#define AZIMUTH           D7
 
 #define FULL_STEP           1
 #define HALF_STEP           2
@@ -34,6 +29,7 @@
 
 #define INC_CAL_ADDRESS     0
 
+// system_tick_t values as it's measured in millis
 #define ONE_SECOND          1000
 #define FIVE_SECONDS        (ONE_SECOND * 5)
 #define TEN_SECONDS         (ONE_SECOND * 10)
@@ -42,6 +38,8 @@
 #define FIVE_MINUTES        (ONE_MINUTE * 5)
 #define TEN_MINUTES         (ONE_MINUTE * 10)
 #define THIRTY_MINUTES      (ONE_MINUTE * 30)
+#define ONE_HOUR            (ONE_MINUTE * 60)
+#define TWO_HOURS           (ONE_HOUR * 2)
 
 #define ISS_BLACK           0x0000
 #define ISS_BLUE            0x001F
@@ -75,8 +73,6 @@ int g_distance;
 int g_proximity;
 system_tick_t g_displayTimeoutMillis;
 system_tick_t g_globeTimeoutMillis;
-system_tick_t g_dutyCycleTimeout;
-system_tick_t g_dutyCycleRestart;
 bool g_querySuccess;
 bool g_runLocationQuery;
 bool g_inCalibration;
@@ -607,7 +603,7 @@ void setup()
     g_displayTimeout = ONE_MINUTE;
     g_globeTimeout = FIVE_MINUTES;
     g_displayTimeoutMillis = millis() + ONE_MINUTE;
-    g_globeTimeoutMillis = millis() + FIVE_MINUTES;
+    g_globeTimeoutMillis = millis() + TWO_HOURS;
     g_proximity = 60;
     g_cycleColors = false;
     g_globePowerControl = false;
