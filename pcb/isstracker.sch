@@ -10109,11 +10109,11 @@ Switches electronic signals</description>
 <label x="134.62" y="76.2" size="1.016" layer="95" xref="yes"/>
 </segment>
 </net>
-<net name="MISO" class="0">
+<net name="GLOBE_EN" class="0">
 <segment>
-<pinref part="U1" gate="U1" pin="MISO"/>
-<wire x1="124.46" y1="165.1" x2="114.3" y2="165.1" width="0.1524" layer="91"/>
-<label x="114.3" y="165.1" size="1.016" layer="95" rot="R180" xref="yes"/>
+<pinref part="U1" gate="U1" pin="A0"/>
+<wire x1="124.46" y1="185.42" x2="114.3" y2="185.42" width="0.1524" layer="91"/>
+<label x="114.3" y="185.42" size="1.016" layer="95" rot="R180" xref="yes"/>
 </segment>
 <segment>
 <pinref part="J5" gate="G$1" pin="1"/>
