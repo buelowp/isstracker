@@ -4,11 +4,14 @@
 #define APP_ID              54
 #define BOARD_REV_1_6       1
 
+#define miso                A7      // used by library internally, defined here to avoid confusion
+#define mosi                A6      // used by library internally, defined here to avoid confusion
 #define cs                  A5
 #define rst                 A3
 #define dc                  A4
 #define DISTANCE            A2
 #define GLOBE_POWER         A1
+#define GLOBE_EN            A0
 
 #define mtr_ms2             D0
 #define mtr_en              D1
@@ -17,7 +20,7 @@
 #define mtr_ms1             D4
 #define mtr_slp             D5
 #define SERVO               D6
-#define AZIMUTH           D7
+#define AZIMUTH             D7
 
 #define FULL_STEP           1
 #define HALF_STEP           2
@@ -78,6 +81,7 @@ bool g_runLocationQuery;
 bool g_inCalibration;
 bool g_motorDecCalibrated;
 bool g_motorHome;
+bool g_motorEnabled;
 bool g_inclineHome;
 bool g_displayEnabled;
 bool g_cycleColors;
@@ -198,15 +202,24 @@ void set_motor_step_resolution(int step)
     }
 }
 
+/**
+ * \fn void set_motor_enabled(bool en)
+ * \param en Flag for motor state
+ * 
+ * Set to true, and drive pin LOW to enable the easy driver, false
+ * drives the pin HIGH which disables the driver.
+ */
 void set_motor_enabled(bool en)
 {
     if (en) {
         digitalWrite(mtr_en, LOW);
-        Log.info("%s: motor is disabled", __FUNCTION__);
+        g_motorEnabled = true;
+        Log.info("%s: motor is enabled", __FUNCTION__);
     }
     else {
         digitalWrite(mtr_en, HIGH);
-        Log.info("%s: motor is enabled", __FUNCTION__);
+        g_motorEnabled = false;
+        Log.info("%s: motor is disabled", __FUNCTION__);
     }
 }
  
@@ -240,6 +253,15 @@ void set_motor_position(int angle)
         set_motor_sleep(true);
 }
 
+/**
+ * \fn void iss_location(const char *event, const char *data) 
+ * \param event Pointer to the event name returned by the webhook
+ * \param data The actual JSON data returned by the webhook
+ * 
+ * This is a Particle webhook return function which translates
+ * the JSON from the API into a latitude and longitude the
+ * control board can understand and move towards.
+ */
 void iss_location(const char *event, const char *data) 
 {
     JSONValue outerObj = JSONValue::parseCopy(data);
@@ -272,7 +294,7 @@ void iss_location(const char *event, const char *data)
 
     if (g_querySuccess) {
         set_inclination();
-        set_azimuth();
+        set_declination();
         Log.info("%s: %f, %f, inclination %d, azimuth %d, motor position %d", __FUNCTION__, g_latitude, g_longitude, g_servoAngle, g_motorAngle, g_azimuthPosition);
     }
     else {
@@ -280,6 +302,14 @@ void iss_location(const char *event, const char *data)
     }
 }
 
+/**
+ * \fn int set_servo_angle()
+ * 
+ * We need to do a bit of math to translate the latitude
+ * into servo angles. That's done here. We round up so we're
+ * only moving when the angle is greater than x.5 which means
+ * it should always be at the actual angle.
+ */
 int set_servo_angle()
 {
     int angle = static_cast<int>(g_latitude + .5);
@@ -290,14 +320,35 @@ int set_servo_angle()
     return angle;
 }
 
+/**
+ * \fn void run_location_update()
+ * 
+ * Tell the location function to run, as we only do it
+ * every 5 or so seconds and we don't want to do it
+ * in a timer ISR which would crash the system. Basically
+ * this is a poor semaphore.
+ */
 void run_location_update()
 {
     if (!g_inCalibration)
         g_runLocationQuery = true;
 }
 
+/**
+ * \fn void set_inclination(int angle)
+ * \param angle The Angle we are telling the servo to rotate to
+ * 
+ * Sets laser position in absolute angle (it's a servo)
+ * So we an just ignore this if the globe power is off, as
+ * the next time it's called, the servo will just go where
+ * the angle tells it to, no history needed.
+ * This function sets the angle directly.
+ */
 void set_inclination(int angle)
 {
+    if (!g_globeEnabled)
+        return;
+
     if (angle > 20 && angle < 160) {
         servo.write(angle);
         g_servoAngle = angle;
@@ -308,9 +359,21 @@ void set_inclination(int angle)
     Log.info("%s: Inclination set to %d", __FUNCTION__, g_servoAngle);
 }
 
+/**
+ * \fn void set_inclination()
+ * 
+ * Sets laser position in absolute angle (it's a servo)
+ * So we an just ignore this if the globe power is off, as
+ * the next time it's called, the servo will just go where
+ * the angle tells it to, no history needed.
+ * This function assumes the angle is already calculated.
+ */
 void set_inclination()
 {
     static int lastAngle = 200;
+
+    if (!g_globeEnabled)
+        return;
 
     if (g_inCalibration)
         return;
@@ -323,7 +386,13 @@ void set_inclination()
     Log.info("%s: Inclination set to %d", __FUNCTION__, g_servoAngle);
 }
 
-void set_azimuth()
+/**
+ * \fn void set_declination()
+ * 
+ * Translate the longitude into a value we can set the
+ * stepper motor to.
+ */
+void set_declination()
 {  
     int angle = 0;
     int degrees = 0;
@@ -340,10 +409,24 @@ void set_azimuth()
     set_motor_position(angle);
 }
 
+/**
+ * \fn int web_calibrate(String p)
+ * \param p String from Particle web
+ * \return Returns the int representation of the string sent
+ * 
+ * This will enable a calibration state so we can change the
+ * lat and lon angles if necessary without removing the globe.
+ * To do this, we assume the globe needs to be turned back on
+ * so calibration doesn't fail in the middle if globe power turns
+ * off.
+ */
 int web_calibrate(String p)
 {    
     if (p.toInt() != 0) {
-        digitalWrite(GLOBE_POWER, HIGH);
+        g_globeTimeoutMillis = millis() + TWO_HOURS;
+        g_globeEnabled = true;
+        set_motor_enabled(true);
+        
         g_inCalibration = true;
         Log.info("%s: starting calibration", __FUNCTION__);
     }
@@ -484,20 +567,11 @@ bool detect_motion()
             g_displayTimeoutMillis = millis() + g_displayTimeout;
             return true;
         }
-        if (g_globeTimeoutMillis < millis() && g_globePowerControl) {
-            g_globeEnabled = true;
-            g_globeTimeoutMillis = millis() + g_globeTimeout;
-            digitalWrite(GLOBE_POWER, HIGH);
-        }
     }
     else {
         if (g_displayTimeoutMillis < millis()) {
             g_displayEnabled = false;
             display.fillScreen(0);
-        }
-        if (g_globeTimeoutMillis < millis() && g_globePowerControl) {
-            g_globeEnabled = false;
-            digitalWrite(GLOBE_POWER, LOW);
         }
     }
     return false;
@@ -512,16 +586,24 @@ int web_set_proximity_distance(String p)
     return g_proximity;
 }
 
-int web_set_globe_power_ctl(String p)
+void check_globe_state()
 {
-    int flag = p.toInt();
-    if (flag) {
-        g_globePowerControl = true;
-        return 1;
+    if (millis() <= g_globeTimeoutMillis) {
+        return;
     }
-
-    g_globePowerControl = false;
-    return 0;
+    else {
+        if (digitalRead(GLOBE_EN) == LOW) {
+            g_globeTimeoutMillis = millis() + TWO_HOURS;
+            g_globeEnabled = true;
+            set_motor_enabled(true);
+            return;
+        }
+    }
+    if (g_globeEnabled) {
+        digitalWrite(GLOBE_POWER, LOW);
+        set_motor_enabled(false);
+        g_globeEnabled = false;
+    }
 }
 
 void print_reset_reason()
@@ -601,12 +683,10 @@ void setup()
     g_servoAngle = 90;
     g_displayEnabled = true;
     g_displayTimeout = ONE_MINUTE;
-    g_globeTimeout = FIVE_MINUTES;
     g_displayTimeoutMillis = millis() + ONE_MINUTE;
     g_globeTimeoutMillis = millis() + TWO_HOURS;
     g_proximity = 60;
     g_cycleColors = false;
-    g_globePowerControl = false;
 
     System.enableFeature(FEATURE_RESET_INFO);
 
@@ -627,6 +707,7 @@ void setup()
     pinMode(AZIMUTH, INPUT);
     pinMode(DISTANCE, INPUT);
     pinMode(GLOBE_POWER, OUTPUT);
+    pinMode(GLOBE_EN, INPUT);
  
     g_lastResetReason = System.resetReason();
 
@@ -639,7 +720,6 @@ void setup()
     Particle.function("offset", web_set_incline_offset);
     Particle.function("disptimeout", web_set_display_timeout);
     Particle.function("proximity", web_set_proximity_distance);
-    Particle.function("globepower", web_set_globe_power_ctl);
     Particle.variable("version", g_appId);
     Particle.variable("inc_cal", g_incOffset);
     Particle.variable("azimuth", g_azimuthPosition);
@@ -692,4 +772,5 @@ void loop()
     }
     detect_motion();
     display_update();
+    check_globe_state();
 }
