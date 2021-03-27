@@ -1,7 +1,7 @@
 #include "Adafruit_mfGFX.h"
 #include "Adafruit_SSD1351_Photon.h"
 
-#define APP_ID              54
+#define APP_ID              57
 #define BOARD_REV_1_6       1
 
 #define miso                A7      // used by library internally, defined here to avoid confusion
@@ -423,7 +423,7 @@ void set_declination()
 int web_calibrate(String p)
 {    
     if (p.toInt() != 0) {
-        g_globeTimeoutMillis = millis() + TWO_HOURS;
+        g_globeTimeoutMillis = millis() + ONE_HOUR;
         g_globeEnabled = true;
         set_motor_enabled(true);
         
@@ -556,6 +556,16 @@ void display_update()
         display.setTextColor(ISS_GREEN, ISS_BLACK);
         display.printf("Lon: %10.06f E \n", g_longitude);
     }
+    display.setTextColor(ISS_WHITE, ISS_BLACK);
+    display.printf("\n\nLaser State: ");
+    if (g_globeEnabled) {
+        display.setTextColor(ISS_GREEN, ISS_BLACK);
+        display.printf("ON");
+    }
+    else {
+        display.setTextColor(ISS_RED, ISS_BLACK);
+        display.printf("OFF");
+    }
 //    Log.info("%s: Lat: %f, Lon: %f", __FUNCTION__, g_latitude, g_longitude);
 }
 
@@ -586,6 +596,22 @@ int web_set_proximity_distance(String p)
     return g_proximity;
 }
 
+int web_enable_globe(String p)
+{
+    int enable = p.toInt();
+
+    if (enable == 0) {
+        g_globeEnabled = false;
+        g_globeTimeoutMillis = 0;
+        digitalWrite(GLOBE_POWER, LOW);
+        return 0;
+    }
+    g_globeTimeoutMillis = millis() + ONE_HOUR;
+    g_globeEnabled = true;
+    digitalWrite(GLOBE_POWER, HIGH);
+    return 1;
+}
+
 void check_globe_state()
 {
     if (millis() <= g_globeTimeoutMillis) {
@@ -593,15 +619,13 @@ void check_globe_state()
     }
     else {
         if (digitalRead(GLOBE_EN) == LOW) {
-            g_globeTimeoutMillis = millis() + TWO_HOURS;
+            g_globeTimeoutMillis = millis() + ONE_HOUR;
             g_globeEnabled = true;
-            set_motor_enabled(true);
             return;
         }
     }
     if (g_globeEnabled) {
         digitalWrite(GLOBE_POWER, LOW);
-        set_motor_enabled(false);
         g_globeEnabled = false;
     }
 }
@@ -684,9 +708,10 @@ void setup()
     g_displayEnabled = true;
     g_displayTimeout = ONE_MINUTE;
     g_displayTimeoutMillis = millis() + ONE_MINUTE;
-    g_globeTimeoutMillis = millis() + TWO_HOURS;
+    g_globeTimeoutMillis = millis() + ONE_HOUR;
     g_proximity = 60;
     g_cycleColors = false;
+    g_globeEnabled = false;
 
     System.enableFeature(FEATURE_RESET_INFO);
 
@@ -720,6 +745,7 @@ void setup()
     Particle.function("offset", web_set_incline_offset);
     Particle.function("disptimeout", web_set_display_timeout);
     Particle.function("proximity", web_set_proximity_distance);
+    Particle.function("laser", web_enable_globe);
     Particle.variable("version", g_appId);
     Particle.variable("inc_cal", g_incOffset);
     Particle.variable("azimuth", g_azimuthPosition);
@@ -727,12 +753,13 @@ void setup()
     Particle.variable("distance", g_distance);
 
     display.printf("Cloud complete\n");
+    display.printf("Enabling globe...\n");
+    digitalWrite(GLOBE_POWER, HIGH);
     display.printf("Motor Cal...");
     reset_motor();
     set_motor_step_resolution(QUARTER_STEP);        // 800 steps per revolution, .45 deg per step
     set_motor_dir(CCLOCKWISE);
-    display.printf("Enabling globe...\n");
-    digitalWrite(GLOBE_POWER, HIGH);
+    g_globeEnabled = true;
     delay(10);
     display.printf("Starting servo...\n");
     servo.attach(SERVO);
