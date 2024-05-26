@@ -1,7 +1,8 @@
 #include "Adafruit_mfGFX.h"
 #include "Adafruit_SSD1351_Photon.h"
+#include "Adafruit-MotorShield-V2/Adafruit-MotorShield-V2.h"
 
-#define APP_ID              57
+#define APP_ID              60
 #define BOARD_REV_1_6       1
 
 #define miso                A7      // used by library internally, defined here to avoid confusion
@@ -10,25 +11,18 @@
 #define rst                 A3
 #define dc                  A4
 #define DISTANCE            A2
-#define GLOBE_POWER         A1
-#define GLOBE_EN            A0
+#define LASER_POWER         D5
 
-#define mtr_ms2             D0
-#define mtr_en              D1
-#define mtr_dir             D2
-#define mtr_step            D3
-#define mtr_ms1             D4
-#define mtr_slp             D5
-#define SERVO               D6
-#define AZIMUTH             D7
+#define SERVO               D3
+#define AZIMUTH             D4
 
-#define FULL_STEP           1
-#define HALF_STEP           2
-#define QUARTER_STEP        3
-#define EIGHTH_STEP         4
+#define FULL_STEP           SINGLE
+#define HALF_STEP           DOUBLE
+#define QUARTER_STEP        INTERLEAVE
+#define EIGHTH_STEP         MICROSTEP
 
-#define CLOCKWISE           1
-#define CCLOCKWISE          2
+#define CLOCKWISE           FORWARD
+#define CCLOCKWISE          BACKWARD
 
 #define INC_CAL_ADDRESS     0
 
@@ -90,139 +84,24 @@ bool g_globePowerControl;
 String g_version = System.version() + "." + APP_ID;
 
 Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
-
-void set_motor_sleep(bool slp)
-{
-    if (slp) {
-        Log.info("%s: Putting motor to sleep", __FUNCTION__);
-        digitalWrite(mtr_slp, LOW);
-        delay(250);
-    }
-    else {
-        Log.info("%s: Waking motor up", __FUNCTION__);
-        digitalWrite(mtr_slp, HIGH);
-        delay(250);
-    }
-}
+Adafruit_StepperMotor *myMotor = AFMS.getStepper(200, 1);
 
 void set_motor_home()
 {
-    set_motor_step_resolution(FULL_STEP);
-    set_motor_enabled(true);
-    set_motor_sleep(false);
-
-    // If we seem like we are home, make a
-    // quarter turn so we can rotate and hit
-    // the leading edge of the sensor to be consistent
-    Log.info("%s: Moving motor away from sensor...", __FUNCTION__);
-    set_motor_dir(CLOCKWISE);
-    if (digitalRead(AZIMUTH) == LOW) {
-        for (int i = 0; i < 50; i++) {
-            digitalWrite(mtr_step, HIGH);
-            delay(1);
-            digitalWrite(mtr_step, LOW);
-            delay(1);
-        }
+    while (digitalRead(AZIMUTH) != HIGH) {
+        myMotor->step(1, FORWARD, INTERLEAVE);
+        delay(10);
     }
-
-    // This will be slow!
-    Log.info("%s: Moving motor back to home!", __FUNCTION__);
-    set_motor_dir(CCLOCKWISE);
-    for (int i = 0; i < 200; i++) {
-        digitalWrite(mtr_step, HIGH);
-        delay(1);
-        digitalWrite(mtr_step, LOW);
-        delay(200);
-        if (digitalRead(AZIMUTH) == LOW) {
-            break;
-        }
-        Particle.process();
-    }
-    set_motor_sleep(true);
     g_azimuthPosition = 0;
     g_motorHome = true;
 }
 
 void reset_motor()
 {
-    set_motor_sleep(false);
-    set_motor_enabled(true);
-    set_motor_dir(CLOCKWISE);
-    set_motor_step_resolution(FULL_STEP);
     set_motor_home();
-    set_motor_sleep(true);
     Log.info("%s: motor reset complete", __FUNCTION__);
 }
 
-void set_motor_dir(int dir)
-{
-    switch (dir) {
-        case CCLOCKWISE:
-            digitalWrite(mtr_dir, HIGH);
-            g_motorDirection = CCLOCKWISE;
-            Log.info("%s: Set motor direction to clockwise", __FUNCTION__);
-            break;
-        case CLOCKWISE:
-        default:
-            digitalWrite(mtr_dir, LOW);
-            g_motorDirection = CLOCKWISE;
-            Log.info("%s: Set motor direction to counter clockwise", __FUNCTION__);
-            break;
-    }
-}
-
-void set_motor_step_resolution(int step)
-{
-    switch (step) {
-        case HALF_STEP:
-            digitalWrite(mtr_ms1, HIGH);
-            digitalWrite(mtr_ms2, LOW);
-            g_currentResolution = 400;
-            Log.info("%s: Set stepper resolution to half steps (400)", __FUNCTION__);
-            break;
-        case QUARTER_STEP:
-            digitalWrite(mtr_ms1, LOW);
-            digitalWrite(mtr_ms2, HIGH);
-            g_currentResolution = 800;
-            Log.info("%s: Set stepper resolution to quarter steps (800)", __FUNCTION__);
-            break;
-        case EIGHTH_STEP:
-            digitalWrite(mtr_ms1, HIGH);
-            digitalWrite(mtr_ms2, HIGH);
-            g_currentResolution = 1600;
-            Log.info("%s: Set stepper resolution to eighth steps (1600)", __FUNCTION__);
-            break;
-        case FULL_STEP:
-        default:
-            digitalWrite(mtr_ms1, LOW);
-            digitalWrite(mtr_ms2, LOW);
-            g_currentResolution = 200;
-            Log.info("%s: Set stepper resolution to single steps (200)", __FUNCTION__);
-            break;
-    }
-}
-
-/**
- * \fn void set_motor_enabled(bool en)
- * \param en Flag for motor state
- * 
- * Set to true, and drive pin LOW to enable the easy driver, false
- * drives the pin HIGH which disables the driver.
- */
-void set_motor_enabled(bool en)
-{
-    if (en) {
-        digitalWrite(mtr_en, LOW);
-        g_motorEnabled = true;
-        Log.info("%s: motor is enabled", __FUNCTION__);
-    }
-    else {
-        digitalWrite(mtr_en, HIGH);
-        g_motorEnabled = false;
-        Log.info("%s: motor is disabled", __FUNCTION__);
-    }
-}
- 
  /**
   * When we need to move the motor, turn the outputs
   * on which is what SLP going HIGH does. This should
@@ -237,20 +116,13 @@ void set_motor_position(int angle)
     }
     int steps = angle - g_azimuthPosition;
     if (steps > 0) {
-        set_motor_sleep(false);
         Log.info("%s: Moving motor %d steps", __FUNCTION__, steps);
         g_motorHome = false;
     }
     for (int i = 0; i < steps; i++) {
-        digitalWrite(mtr_step, HIGH); //Trigger one step forward
-        delay(1);
-        digitalWrite(mtr_step, LOW); //Pull step pin low so it can be triggered again
-        delay(1);
+        myMotor->step(142, FORWARD, MICROSTEP);
         g_azimuthPosition++;
     }
-
-    if (steps > 0)
-        set_motor_sleep(true);
 }
 
 /**
@@ -448,8 +320,8 @@ int web_rotate_clockwise(String p)
 
     if (steps >= 0 && steps < 360) {
         Log.info("%s: Moving azimuth motor %d steps clockwise", __FUNCTION__, steps);
-        set_motor_dir(CLOCKWISE);
-        set_motor_position(steps);
+        for (int i = 0; i < steps; i++)
+            myMotor->step(142, FORWARD, MICROSTEP);
         return steps;
     }
 
@@ -466,8 +338,8 @@ int web_rotate_cclockwise(String p)
 
     if (steps > 0 && steps < 180) {
         Log.info("%s: Moving azimuth motor %d steps counter clockwise", __FUNCTION__, steps);
-        set_motor_dir(CCLOCKWISE);
-        set_motor_position(steps);
+        for (int i = 0; i < steps; i++)
+            myMotor->step(142, BACKWARD, MICROSTEP);
         return steps;
     }
 
@@ -746,15 +618,15 @@ void setup()
     Particle.function("disptimeout", web_set_display_timeout);
     Particle.function("proximity", web_set_proximity_distance);
     Particle.function("laser", web_enable_globe);
-    Particle.variable("version", g_appId);
+    Particle.variable("version", g_version);
     Particle.variable("inc_cal", g_incOffset);
     Particle.variable("azimuth", g_azimuthPosition);
     Particle.variable("reset", g_lastResetReason);
-    Particle.variable("distance", g_distance);
+    Particle.variable("laser", g_globeEnabled);
 
     display.printf("Cloud complete\n");
-    display.printf("Enabling globe...\n");
-    digitalWrite(GLOBE_POWER, HIGH);
+    display.printf("Enabling Laser...\n");
+    digitalWrite(LASER_POWER, HIGH);
     display.printf("Motor Cal...");
     reset_motor();
     set_motor_step_resolution(QUARTER_STEP);        // 800 steps per revolution, .45 deg per step
