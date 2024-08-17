@@ -5,26 +5,17 @@
 #define APP_ID              60
 #define BOARD_REV_1_6       1
 
-#define miso                A7      // used by library internally, defined here to avoid confusion
-#define mosi                A6      // used by library internally, defined here to avoid confusion
-#define cs                  A5
-#define rst                 A3
-#define dc                  A4
+#define MISO                A7      // used by library internally, defined here to avoid confusion
+#define MOSI                A6      // used by library internally, defined here to avoid confusion
+#define CS                  A5
+#define RST                 A3
+#define DC                  A4
 #define DISTANCE            A2
-#define LASER_POWER         D5
-
-#define SERVO               D3
-#define AZIMUTH             D4
-
-#define FULL_STEP           SINGLE
-#define HALF_STEP           DOUBLE
-#define QUARTER_STEP        INTERLEAVE
-#define EIGHTH_STEP         MICROSTEP
-
-#define CLOCKWISE           FORWARD
-#define CCLOCKWISE          BACKWARD
-
-#define INC_CAL_ADDRESS     0
+#define LASER_POWER         D2
+#define MOTOR_ERR           D6
+#define WIFI_ERR            D7
+#define SERVO               D5
+#define AZIMUTH             D3
 
 // system_tick_t values as it's measured in millis
 #define ONE_SECOND          1000
@@ -38,13 +29,16 @@
 #define ONE_HOUR            (ONE_MINUTE * 60)
 #define TWO_HOURS           (ONE_HOUR * 2)
 
+#define LATCAL_INDEX    0
+#define LONCAL_INDEX    1
+
 #define ISS_BLACK           0x0000
 #define ISS_BLUE            0x001F
 #define ISS_RED             0xF800
 #define ISS_GREEN           0x07E0
 #define ISS_CYAN            0x07FF
 #define ISS_MAGENTA         0xF81F
-#define ISS_YELLOW          0xFFE0  
+#define ISS_YELLOW          0xFFE0
 #define ISS_WHITE           0xFFFF
 
 Timer issUpdate(5000, run_location_update);
@@ -83,8 +77,11 @@ bool g_globeEnabled;
 bool g_globePowerControl;
 String g_version = System.version() + "." + APP_ID;
 
-Adafruit_SSD1351 display = Adafruit_SSD1351(cs, dc, rst);
+Adafruit_SSD1351 display = Adafruit_SSD1351(CS, DC, RST);
 Adafruit_StepperMotor *myMotor = AFMS.getStepper(200, 1);
+
+Adafruit_MotorShield AFMS = Adafruit_MotorShield();
+Adafruit_StepperMotor *myMotor = AFMS.getStepper(200, 2);
 
 void set_motor_home()
 {
@@ -400,47 +397,108 @@ int web_set_display_timeout(String p)
     return g_displayTimeout;
 }
 
+int uptime(char *buf, int size)
+{
+    Log.info("%s\n", __PRETTY_FUNCTION__);
+    unsigned long currentMillis = millis();
+    unsigned long seconds = currentMillis / 1000;
+    unsigned long minutes = seconds / 60;
+    unsigned long hours = minutes / 60;
+    unsigned long days = hours / 24;
+    currentMillis %= 1000;
+    seconds %= 60;
+    minutes %= 60;
+    hours %= 24;
+
+    memset(buf, 0, size);
+    int bytes = snprintf(buf, size, "%d:%02d:%02d", hours, minutes, seconds);
+    return bytes;
+}
+
 void display_update()
 {
+    char t[10];
+/*
     if (!g_displayEnabled) {
         return;
     }
-
+*/
+    if (g_firstBoot) {
+        display.fillScreen(0);
+        g_firstBoot = false;
+    }
+    Log.info("%s\n", __PRETTY_FUNCTION__);
     display.setCursor(0,0);
     display.setTextSize(1);
     display.setTextColor(ISS_WHITE, ISS_BLACK);
-    display.printf("Version: %s\n\n", g_version.c_str());
+    display.printf("Ver: %s\n\n", g_version.c_str());
     display.setTextColor(ISS_CYAN, ISS_BLACK);
     display.printf("ISS Location\n\n");
-    if (g_latitude < 0) {
+    if (g_issLat < 0) {
+        display.setTextColor(ISS_WHITE, ISS_BLACK);
+        display.printf("Lat: ");
         display.setTextColor(ISS_BLUE, ISS_BLACK);
-        display.printf("Lat: %10.06f S  \n", g_latitude);
+        display.printf("%10.05f S  \n", g_issLat);
     }
     else {
+        display.setTextColor(ISS_WHITE, ISS_BLACK);
+        display.printf("Lat: ");
         display.setTextColor(ISS_GREEN, ISS_BLACK);
-        display.printf("Lat: %10.06f N \n", g_latitude);
+        display.printf("%10.05f N \n", g_issLat);
     }
-    if (g_longitude < 0) {
+    if (g_issLon < 0) {
+        display.setTextColor(ISS_WHITE, ISS_BLACK);
+        display.printf("Lon: ");
         display.setTextColor(ISS_BLUE, ISS_BLACK);
-        display.printf("Lon: %10.06f W \n", g_longitude);
+        display.printf("%10.05f W \n", g_issLon);
     }
     else {
+        display.setTextColor(ISS_WHITE, ISS_BLACK);
+        display.printf("Lon: ");
         display.setTextColor(ISS_GREEN, ISS_BLACK);
-        display.printf("Lon: %10.06f E \n", g_longitude);
+        display.printf("%10.05f E \n", g_issLon);
     }
     display.setTextColor(ISS_WHITE, ISS_BLACK);
-    display.printf("\n\nLaser State: ");
-    if (g_globeEnabled) {
+    display.printf("\n\nLaser State  : ");
+    if (g_laserPower) {
         display.setTextColor(ISS_GREEN, ISS_BLACK);
-        display.printf("ON");
+        display.printf("ON ");
     }
     else {
         display.setTextColor(ISS_RED, ISS_BLACK);
         display.printf("OFF");
     }
-//    Log.info("%s: Lat: %f, Lon: %f", __FUNCTION__, g_latitude, g_longitude);
-}
+    display.setTextColor(ISS_WHITE, ISS_BLACK);
 
+    if (WiFi.isConnected()) {
+        int rssi = WiFi.RSSI();
+        display.setTextColor(ISS_WHITE, ISS_BLACK);
+        display.printf("\n\nIP: ");
+        display.setTextColor(ISS_CYAN, ISS_BLACK);
+        display.printf("%s", WiFi.localIP().toString().c_str());
+        display.setTextColor(ISS_WHITE, ISS_BLACK);
+        display.printf("\nSSID: ");
+        display.setTextColor(ISS_CYAN, ISS_BLACK);
+        display.printf("%s", WiFi.SSID().c_str());
+        display.setTextColor(ISS_WHITE, ISS_BLACK);
+        display.printf("\nRSSI: ");
+        if (rssi > -65)
+            display.setTextColor(ISS_GREEN, ISS_BLACK);
+        else if (rssi > -80)
+            display.setTextColor(ISS_YELLOW, ISS_BLACK);
+        else
+            display.setTextColor(ISS_RED, ISS_BLACK);
+        display.printf("%d", rssi);
+    }
+    else {
+        display.setTextColor(ISS_RED, ISS_BLACK);
+        display.printf("\nWiFi Disconnected");
+    }
+
+    display.setTextColor(ISS_WHITE, ISS_BLACK);
+    uptime(t, 10);
+    display.printf("\nUptime: %s", t);
+}
 bool detect_motion()
 {
     if (digitalRead(DISTANCE) == HIGH) {
@@ -646,10 +704,12 @@ void setup()
     display.printf("Setup ver %d\n", g_appId);
     delay(3000);
     display.fillScreen(0);
+    g_servoAngle = 30;
 }
 
 void loop() 
 {
+    /*
     static int lastHour = 24;
 
     if (g_runLocationQuery) {
@@ -672,4 +732,14 @@ void loop()
     detect_motion();
     display_update();
     check_globe_state();
+    */
+    if (g_servoAngle < 150) {
+        g_servoAngle += 10;
+        servo.write(g_servoAngle);
+    }
+    else {
+        g_servoAngle = 30;
+        servo.write(g_servoAngle);
+    }
+    delay(5000);
 }
